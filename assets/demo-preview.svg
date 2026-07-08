@@ -1,0 +1,59 @@
+<svg width="1600" height="980" viewBox="0 0 1600 980" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1600" height="980" fill="#0b1220"/>
+  <rect x="44" y="36" width="1512" height="908" rx="22" fill="#111827" stroke="#334155"/>
+  <text x="84" y="108" fill="#F8FAFC" font-family="Arial, Helvetica, sans-serif" font-size="38" font-weight="700">Feedpak Naming</text>
+  <text x="84" y="146" fill="#94A3B8" font-family="Arial, Helvetica, sans-serif" font-size="20">Preview rename results, save presets, and apply a default naming rule to your .feedpak library.</text>
+
+  <rect x="84" y="188" width="1432" height="292" rx="18" fill="#0f172a" stroke="#334155"/>
+  <text x="112" y="228" fill="#E2E8F0" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700">Rule setup</text>
+
+  <text x="112" y="278" fill="#CBD5E1" font-family="Arial, Helvetica, sans-serif" font-size="18">Preset</text>
+  <rect x="112" y="292" width="520" height="56" rx="12" fill="#1E293B" stroke="#475569"/>
+  <text x="132" y="327" fill="#F8FAFC" font-family="Menlo, Consolas, monospace" font-size="20">Artist / Title</text>
+
+  <text x="672" y="278" fill="#CBD5E1" font-family="Arial, Helvetica, sans-serif" font-size="18">Naming convention</text>
+  <rect x="672" y="292" width="792" height="56" rx="12" fill="#1E293B" stroke="#475569"/>
+  <text x="692" y="327" fill="#F8FAFC" font-family="Menlo, Consolas, monospace" font-size="20">{artist}/{title}.feedpak</text>
+  <text x="672" y="372" fill="#94A3B8" font-family="Arial, Helvetica, sans-serif" font-size="16">Variables: {artist}, {title}, {album}, {year}, {input_name}</text>
+
+  <rect x="112" y="396" width="290" height="48" rx="12" fill="#7C3AED"/>
+  <text x="165" y="426" fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700">Save preset</text>
+  <rect x="420" y="396" width="290" height="48" rx="12" fill="#B91C1C"/>
+  <text x="472" y="426" fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700">Delete preset</text>
+  <rect x="1120" y="390" width="344" height="64" rx="16" fill="#1E293B" stroke="#475569"/>
+  <rect x="1146" y="412" width="24" height="24" rx="6" fill="#2563EB"/>
+  <text x="1186" y="430" fill="#E2E8F0" font-family="Arial, Helvetica, sans-serif" font-size="18">Auto-apply default rule after import</text>
+
+  <rect x="84" y="514" width="1432" height="370" rx="18" fill="#0f172a" stroke="#334155"/>
+  <text x="112" y="554" fill="#E2E8F0" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700">Preview</text>
+
+  <rect x="112" y="584" width="220" height="48" rx="12" fill="#2563EB"/>
+  <text x="182" y="614" fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700">Preview</text>
+  <rect x="348" y="584" width="220" height="48" rx="12" fill="#059669"/>
+  <text x="431" y="614" fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700">Apply</text>
+  <rect x="584" y="584" width="332" height="48" rx="12" fill="#D97706"/>
+  <text x="652" y="614" fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700">Run saved default now</text>
+
+  <text x="112" y="676" fill="#94A3B8" font-family="Arial, Helvetica, sans-serif" font-size="17">3 rename, 0 unchanged, 0 conflicts</text>
+
+  <rect x="112" y="704" width="1292" height="56" rx="10" fill="#111827" stroke="#334155"/>
+  <text x="140" y="739" fill="#93C5FD" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700">rename</text>
+  <text x="300" y="739" fill="#E2E8F0" font-family="Arial, Helvetica, sans-serif" font-size="16">Paramore</text>
+  <text x="470" y="739" fill="#E2E8F0" font-family="Arial, Helvetica, sans-serif" font-size="16">Hallelujah</text>
+  <text x="690" y="739" fill="#94A3B8" font-family="Menlo, Consolas, monospace" font-size="15">Paramore_Hallelujah_v1_DD_p.feedpak</text>
+  <text x="1090" y="739" fill="#E2E8F0" font-family="Menlo, Consolas, monospace" font-size="15">Paramore/Hallelujah.feedpak</text>
+
+  <rect x="112" y="770" width="1292" height="56" rx="10" fill="#111827" stroke="#334155"/>
+  <text x="140" y="805" fill="#93C5FD" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700">rename</text>
+  <text x="300" y="805" fill="#E2E8F0" font-family="Arial, Helvetica, sans-serif" font-size="16">Weezer</text>
+  <text x="470" y="805" fill="#E2E8F0" font-family="Arial, Helvetica, sans-serif" font-size="16">Hold Me</text>
+  <text x="690" y="805" fill="#94A3B8" font-family="Menlo, Consolas, monospace" font-size="15">Weezer_Hold-Me_v1_DD_p.feedpak</text>
+  <text x="1090" y="805" fill="#E2E8F0" font-family="Menlo, Consolas, monospace" font-size="15">Weezer/Hold Me.feedpak</text>
+
+  <rect x="112" y="836" width="1292" height="56" rx="10" fill="#111827" stroke="#334155"/>
+  <text x="140" y="871" fill="#93C5FD" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700">rename</text>
+  <text x="300" y="871" fill="#E2E8F0" font-family="Arial, Helvetica, sans-serif" font-size="16">Toadies</text>
+  <text x="470" y="871" fill="#E2E8F0" font-family="Arial, Helvetica, sans-serif" font-size="16">Tyler</text>
+  <text x="690" y="871" fill="#94A3B8" font-family="Menlo, Consolas, monospace" font-size="15">Toadies_Tyler_v1_DD_p.feedpak</text>
+  <text x="1090" y="871" fill="#E2E8F0" font-family="Menlo, Consolas, monospace" font-size="15">Toadies/Tyler.feedpak</text>
+</svg>
