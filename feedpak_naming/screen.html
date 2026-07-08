@@ -1,0 +1,79 @@
+<div id="feedpak-naming-root" class="min-h-full bg-dark-900 text-gray-100">
+  <div class="mx-auto max-w-6xl px-4 py-6">
+    <div class="mb-6">
+      <h2 class="text-2xl font-semibold">Feedpak Naming</h2>
+      <p class="mt-2 text-sm text-gray-400">
+        Save naming presets, preview changes, and optionally keep one default rule ready for post-import cleanup.
+      </p>
+    </div>
+
+    <div class="mb-6 rounded-xl border border-dark-400 bg-dark-800 p-4 shadow-lg">
+      <div class="grid gap-4 lg:grid-cols-2">
+        <label class="block">
+          <span class="mb-2 block text-sm font-medium text-gray-200">Preset</span>
+          <select id="feedpak-naming-preset" class="w-full rounded-lg border border-dark-400 bg-dark-700 px-3 py-2 text-sm text-white outline-none focus:border-blue-500"></select>
+          <span class="mt-2 block text-xs text-gray-400">Pick a saved rule, then tweak it if you want.</span>
+        </label>
+        <label class="block">
+          <span class="mb-2 block text-sm font-medium text-gray-200">Naming convention</span>
+          <input id="feedpak-naming-template" type="text" class="w-full rounded-lg border border-dark-400 bg-dark-700 px-3 py-2 text-sm text-white outline-none focus:border-blue-500" placeholder="{artist}_{title}.feedpak" />
+          <span class="mt-2 block text-xs text-gray-400">Variables: <code>{artist}</code>, <code>{title}</code>, <code>{album}</code>, <code>{year}</code>, <code>{input_name}</code></span>
+        </label>
+      </div>
+
+      <div class="mt-4 grid gap-4 lg:grid-cols-[1fr_auto]">
+        <div class="rounded-lg border border-dark-400 bg-dark-700/50 p-3">
+          <div class="mb-2 text-sm font-medium text-gray-200">Saved presets</div>
+          <div class="flex flex-wrap gap-2">
+            <input id="feedpak-naming-preset-name" type="text" class="min-w-48 flex-1 rounded-lg border border-dark-400 bg-dark-700 px-3 py-2 text-sm text-white outline-none focus:border-blue-500" placeholder="Preset name" />
+            <button id="feedpak-naming-save-preset" class="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500">Save preset</button>
+            <button id="feedpak-naming-delete-preset" class="rounded-lg bg-rose-700 px-4 py-2 text-sm font-medium text-white hover:bg-rose-600">Delete preset</button>
+          </div>
+        </div>
+        <div class="rounded-lg border border-dark-400 bg-dark-700/50 p-3">
+          <label class="flex items-start gap-3 text-sm text-gray-200">
+            <input id="feedpak-naming-auto-apply" type="checkbox" class="mt-1 h-4 w-4 rounded border-dark-300 bg-dark-800 text-blue-500 focus:ring-blue-500" />
+            <span>
+              <span class="block font-medium">Auto-apply default rule after import/conversion</span>
+              <span class="block text-xs text-gray-400">This saves the rule on the backend and exposes a default-run route for the import flow to call.</span>
+            </span>
+          </label>
+          <button id="feedpak-naming-save-settings" class="mt-3 w-full rounded-lg bg-slate-600 px-4 py-2 text-sm font-medium text-white hover:bg-slate-500">Save defaults</button>
+        </div>
+      </div>
+
+      <div class="mt-4 flex flex-wrap gap-2">
+        <button id="feedpak-naming-preview" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500">Preview</button>
+        <button id="feedpak-naming-apply" class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500">Apply</button>
+        <button id="feedpak-naming-run-default" class="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-500">Run saved default now</button>
+      </div>
+
+      <div class="mt-4 flex flex-wrap items-center gap-3 text-xs text-gray-400">
+        <span id="feedpak-naming-status">Ready.</span>
+        <span id="feedpak-naming-summary" class="text-gray-500"></span>
+      </div>
+    </div>
+
+    <div class="overflow-hidden rounded-xl border border-dark-400 bg-dark-800 shadow-lg">
+      <div class="border-b border-dark-400 px-4 py-3 text-sm font-medium text-gray-200">Preview</div>
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="bg-dark-700 text-left text-xs uppercase tracking-wide text-gray-400">
+            <tr>
+              <th class="px-4 py-3">Status</th>
+              <th class="px-4 py-3">Artist</th>
+              <th class="px-4 py-3">Title</th>
+              <th class="px-4 py-3">Current file</th>
+              <th class="px-4 py-3">New file</th>
+            </tr>
+          </thead>
+          <tbody id="feedpak-naming-results" class="divide-y divide-dark-400 text-gray-200">
+            <tr>
+              <td colspan="5" class="px-4 py-6 text-center text-sm text-gray-500">Run a preview to see proposed rename results.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,13 @@
+{
+  "id": "feedpak_naming",
+  "name": "Feedpak Naming",
+  "version": "0.1.0",
+  "bundled": false,
+  "private": false,
+  "standards": ["plugin-runtime-idempotent.v1"],
+  "nav": { "label": "Naming", "screen": "plugin-feedpak_naming" },
+  "screen": "screen.html",
+  "script": "screen.js",
+  "routes": "routes.py",
+  "description": "Preview and apply naming-convention rules to .feedpak files in the library."
+}
