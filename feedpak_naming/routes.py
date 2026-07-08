@@ -123,10 +123,74 @@ def _save_settings(config_file: Path, settings: dict[str, Any]) -> None:
     config_file.write_text(json.dumps(settings, indent=2, sort_keys=True), encoding="utf-8")
 
 
-def _preview_items(root: Path, extract_meta, template: str) -> dict[str, Any]:
+def _selected_for_item(item: dict[str, Any], explicit_selection: set[str] | None) -> bool:
+    if not item["actionable"]:
+        return False
+    if explicit_selection is None:
+        return True
+    return item["current_relative_path"] in explicit_selection
+
+
+def _annotate_items(items: list[dict[str, Any]], explicit_selection: set[str] | None) -> dict[str, Any]:
+    selected_current_paths = {
+        item["current_relative_path"]
+        for item in items
+        if _selected_for_item(item, explicit_selection)
+    }
+    selected_target_counts: Counter[str] = Counter(
+        item["proposed_relative_path"]
+        for item in items
+        if _selected_for_item(item, explicit_selection)
+    )
+
+    rename_count = 0
+    unchanged_count = 0
+    conflict_count = 0
+    excluded_count = 0
+    selected_count = 0
+
+    for item in items:
+        selected = _selected_for_item(item, explicit_selection)
+        item["selected"] = selected
+        item["selectable"] = bool(item["actionable"])
+        status = "unchanged"
+        error = None
+
+        if not item["actionable"]:
+            unchanged_count += 1
+        elif not selected:
+            status = "excluded"
+            excluded_count += 1
+        else:
+            selected_count += 1
+            if selected_target_counts[item["proposed_relative_path"]] > 1:
+                status = "conflict"
+                error = "Another selected file would get the same name."
+                conflict_count += 1
+            elif item["target_exists"] and item["proposed_relative_path"] not in selected_current_paths:
+                status = "conflict"
+                error = "A file with that name already exists."
+                conflict_count += 1
+            else:
+                status = "rename"
+                rename_count += 1
+
+        item["status"] = status
+        item["error"] = error
+
+    return {
+        "items": items,
+        "rename_count": rename_count,
+        "unchanged_count": unchanged_count,
+        "conflict_count": conflict_count,
+        "excluded_count": excluded_count,
+        "selected_count": selected_count,
+    }
+
+
+def _preview_items(root: Path, extract_meta, template: str, selected_current_paths: set[str] | None = None) -> dict[str, Any]:
     files = _iter_feedpaks(root)
     items: list[dict[str, Any]] = []
-    proposed_counter: Counter[str] = Counter()
 
     for path in files:
         raw = extract_meta(path) or {}
@@ -134,7 +198,6 @@ def _preview_items(root: Path, extract_meta, template: str) -> dict[str, Any]:
         proposed_path = root / proposed_relative
         rel_current = path.relative_to(root).as_posix()
         rel_proposed = proposed_path.relative_to(root).as_posix()
-        proposed_counter[rel_proposed] += 1
         items.append(
             {
                 "current_path": str(path),
@@ -145,40 +208,16 @@ def _preview_items(root: Path, extract_meta, template: str) -> dict[str, Any]:
                 "title": raw.get("title") or path.stem,
                 "album": raw.get("album") or "",
                 "year": raw.get("year") or "",
+                "actionable": rel_current != rel_proposed,
+                "target_exists": proposed_path.exists() and proposed_path != path,
             }
         )
 
-    rename_count = 0
-    unchanged_count = 0
-    conflict_count = 0
-    for item in items:
-        current = Path(item["current_path"])
-        proposed = Path(item["proposed_path"])
-        status = "rename"
-        error = None
-        if proposed == current:
-            status = "unchanged"
-            unchanged_count += 1
-        elif proposed_counter[item["proposed_relative_path"]] > 1:
-            status = "conflict"
-            error = "Another file would get the same name."
-            conflict_count += 1
-        elif proposed.exists() and proposed != current:
-            status = "conflict"
-            error = "A file with that name already exists."
-            conflict_count += 1
-        else:
-            rename_count += 1
-        item["status"] = status
-        item["error"] = error
-
+    annotated = _annotate_items(items, selected_current_paths)
     return {
         "template": template,
         "root": str(root),
-        "items": items,
-        "rename_count": rename_count,
-        "unchanged_count": unchanged_count,
-        "conflict_count": conflict_count,
+        **annotated,
     }
 
 
@@ -235,13 +274,19 @@ def setup(app, context):
             return JSONResponse({"error": "DLC directory not found"}, status_code=500)
         settings = _load_settings(config_file)
         template = str(payload.get("template") or settings["default_template"] or DEFAULT_TEMPLATE)
+        selected_raw = payload.get("selected_current_paths")
+        selected_current_paths = {
+            str(path).strip()
+            for path in (selected_raw if isinstance(selected_raw, list) else [])
+            if str(path).strip()
+        } or None
         root = _scan_root(dlc)
-        preview_data = _preview_items(root, _meta, template)
+        preview_data = _preview_items(root, _meta, template, selected_current_paths=selected_current_paths)
         blockers = [item for item in preview_data["items"] if item["status"] == "conflict"]
         if blockers:
             return JSONResponse(
                 {
-                    "error": "Preview has conflicts. Resolve them before applying.",
+                    "error": "Preview has conflicts in the selected rows. Resolve them before applying.",
                     "preview": preview_data,
                 },
                 status_code=409,
@@ -266,6 +311,7 @@ def setup(app, context):
 
         return {
             "template": template,
+            "selected_count": preview_data["selected_count"],
             "renamed_count": len(renamed),
             "renamed": renamed,
         }
