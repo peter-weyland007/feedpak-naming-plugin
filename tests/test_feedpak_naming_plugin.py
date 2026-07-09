@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -142,3 +143,49 @@ def test_preview_scans_whole_dlc_root_and_legacy_sloppak_suffix(tmp_path):
     assert "starter/outside.feedpak" in current_paths
     assert "legacy/old.sloppak" in current_paths
     assert len(rows) == 3
+
+
+def test_apply_returns_json_error_when_rename_fails(tmp_path, monkeypatch):
+    dlc = tmp_path / "dlc"
+    lib = dlc / "sloppak"
+    lib.mkdir(parents=True)
+    source = lib / "Paramore_Hallelujah_v1_DD_p.feedpak"
+    source.write_text("fake")
+    cfg = tmp_path / "config"
+    cfg.mkdir()
+
+    def fake_extract_meta(path: Path):
+        return {"artist": "Paramore", "title": "Hallelujah"}
+
+    def boom(self, target):
+        raise PermissionError("mock rename denied")
+
+    monkeypatch.setattr(Path, "rename", boom)
+
+    app = FastAPI()
+    MODULE.setup(
+        app,
+        {
+            "log": type("L", (), {"info": lambda *a, **k: None, "warning": lambda *a, **k: None})(),
+            "config_dir": cfg,
+            "get_dlc_dir": lambda: dlc,
+            "extract_meta": fake_extract_meta,
+        },
+    )
+    client = TestClient(app)
+
+    apply = client.post(
+        "/api/plugins/feedpak_naming/apply",
+        json={
+            "template": "{artist}/{title}.feedpak",
+            "selected_current_paths": ["sloppak/Paramore_Hallelujah_v1_DD_p.feedpak"],
+        },
+    )
+    assert apply.status_code == 500
+    body = apply.json()
+    assert "Rename failed for sloppak/Paramore_Hallelujah_v1_DD_p.feedpak" in body["error"]
+    assert body["failed"] == {
+        "from": "sloppak/Paramore_Hallelujah_v1_DD_p.feedpak",
+        "to": "Paramore/Hallelujah.feedpak",
+    }
+    assert body["renamed_count"] == 0

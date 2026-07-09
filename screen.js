@@ -22,8 +22,16 @@
 
     async function api(path, options) {
         const res = await fetch(API + path, options || {});
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Request failed');
+        const text = await res.text();
+        let data = {};
+        if (text) {
+            try {
+                data = JSON.parse(text);
+            } catch (_err) {
+                data = { error: text };
+            }
+        }
+        if (!res.ok) throw new Error(data.error || ('Request failed (' + res.status + ')'));
         return data;
     }
 

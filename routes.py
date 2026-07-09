@@ -298,8 +298,22 @@ def setup(app, context):
                 continue
             current = Path(item["current_path"])
             proposed = Path(item["proposed_path"])
-            proposed.parent.mkdir(parents=True, exist_ok=True)
-            current.rename(proposed)
+            try:
+                proposed.parent.mkdir(parents=True, exist_ok=True)
+                current.rename(proposed)
+            except Exception as exc:
+                return JSONResponse(
+                    {
+                        "error": f"Rename failed for {item['current_relative_path']}: {exc}",
+                        "failed": {
+                            "from": item["current_relative_path"],
+                            "to": item["proposed_relative_path"],
+                        },
+                        "renamed_count": len(renamed),
+                        "renamed": renamed,
+                    },
+                    status_code=500,
+                )
             renamed.append({"from": item["current_relative_path"], "to": item["proposed_relative_path"]})
             try:
                 parent = current.parent
