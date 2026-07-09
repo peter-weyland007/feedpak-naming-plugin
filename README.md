@@ -1,6 +1,6 @@
 # Feedpak Naming Plugin
 
-A Feedback plugin for previewing and applying naming rules to `.feedpak` files.
+A Feedback plugin for previewing and applying naming rules to `.feedpak` and legacy `.sloppak` files.
 
 ## At a glance
 - preview rename results before changing anything
@@ -10,12 +10,14 @@ A Feedback plugin for previewing and applying naming rules to `.feedpak` files.
 - create artist/title folder layouts like `{artist}/{title}.feedpak`
 - save reusable presets
 - store a default rule and optionally run it later from one backend route
+- scans the whole DLC root so it matches what Feedback's Song Library sees
+- includes both `.feedpak` and legacy `.sloppak` packages in preview/apply
 
 ## Demo
 ### Example flow
 1. Open the **Naming** plugin in Feedback.
 2. Pick a preset or type a rule such as `{artist}/{title}.feedpak`.
-3. Click **Preview** to see current name → new name for every `.feedpak` file.
+3. Click **Preview** to see current name → new name for every supported package.
 4. Leave checked only the rows you want to rename.
 5. Click **Apply selected**.
 6. Optional: save that rule as the default and use **Run saved default now** later.
@@ -26,15 +28,27 @@ A Feedback plugin for previewing and applying naming rules to `.feedpak` files.
 ### Example rename results
 - `Paramore_Hallelujah_v1_DD_p.feedpak` → `Paramore/Hallelujah.feedpak`
 - `Weezer_Hold-Me_v1_DD_p.feedpak` → `Weezer/Hold Me.feedpak`
-- `Toadies_Tyler_v1_DD_p.feedpak` → `Toadies/Tyler.feedpak`
+- `classic-pack.sloppak` → `Classic Artist/Classic Song.feedpak`
 
 ## Install
-1. Download this repo or the release zip from the Releases page.
-2. Copy the `feedpak_naming` folder into your Feedback `plugins` folder.
+### Direct clone / copy into Feedback plugins
+Clone or copy this repo directly into Feedback's `plugins` folder. Because `plugin.json` now lives at the repo root, the repo folder itself is the plugin folder.
+
+Expected shape:
+
+```text
+<feedback-root>/plugins/feedpak-naming-plugin/plugin.json
+```
+
+Then reload or restart Feedback and open **Naming**.
+
+### Release zip install
+1. Download the release zip.
+2. Extract it into your Feedback `plugins` folder.
 3. Confirm you end up with this exact shape:
 
 ```text
-<feedback-root>/plugins/feedpak_naming/plugin.json
+<feedback-root>/plugins/feedpak-naming-plugin/plugin.json
 ```
 
 4. Reload or restart Feedback.
@@ -42,7 +56,7 @@ A Feedback plugin for previewing and applying naming rules to `.feedpak` files.
 
 ## Plugin folder contents
 ```text
-feedpak_naming/
+feedpak-naming-plugin/
   plugin.json
   routes.py
   screen.html
@@ -63,6 +77,9 @@ feedpak_naming/
 - `{year}_{artist}_{title}.feedpak`
 
 ## Behavior notes
+- The plugin scans the whole DLC root, not just `sloppak/`, so it lines up with Song Library.
+- The plugin includes both `.feedpak` and `.sloppak` files in preview and apply.
+- Renamed output still uses the modern `.feedpak` extension by default.
 - The plugin only creates subfolders when your template includes `/`.
 - Preview rows are selectable; unchecked rows are excluded from apply.
 - The preview blocks apply only when the currently selected rows still conflict.
@@ -81,11 +98,10 @@ feedpak-naming-plugin/
   LICENSE
   assets/
     demo-preview.svg
-  feedpak_naming/
-    plugin.json
-    routes.py
-    screen.html
-    screen.js
+  plugin.json
+  routes.py
+  screen.html
+  screen.js
   tests/
     test_feedpak_naming_plugin.py
 ```
@@ -93,5 +109,5 @@ feedpak-naming-plugin/
 ## Development verification
 Verified with:
 - `pytest tests/test_feedpak_naming_plugin.py -q`
-- `python -m py_compile feedpak_naming/routes.py`
-- `node --check feedpak_naming/screen.js`
+- `python -m py_compile routes.py`
+- `node --check screen.js`

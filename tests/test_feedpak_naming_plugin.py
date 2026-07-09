@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 
-PLUGIN_PATH = Path(__file__).resolve().parents[1] / "feedpak_naming" / "routes.py"
+PLUGIN_PATH = Path(__file__).resolve().parents[1] / "routes.py"
 SPEC = importlib.util.spec_from_file_location("feedpak_naming_routes", PLUGIN_PATH)
 assert SPEC is not None and SPEC.loader is not None
 MODULE = importlib.util.module_from_spec(SPEC)
