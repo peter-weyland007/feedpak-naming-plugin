@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 
 PLUGIN_ID = "feedpak_naming"
 PACKAGE_SUFFIX = ".feedpak"
+PACKAGE_SUFFIXES = (".feedpak", ".sloppak")
 DEFAULT_TEMPLATE = "{artist}_{title}.feedpak"
 DEFAULT_PRESETS = [
     {"name": "Artist - Title", "template": "{artist}_{title}.feedpak"},
@@ -23,17 +24,16 @@ WHITESPACE_RE = re.compile(r"\s+")
 
 
 def _scan_root(dlc: Path) -> Path:
-    sloppak = dlc / "sloppak"
-    return sloppak if sloppak.exists() else dlc
+    return dlc
 
 
 def _iter_feedpaks(root: Path) -> list[Path]:
     if not root.exists():
         return []
-    return sorted(
-        [p for p in root.rglob(f"*{PACKAGE_SUFFIX}") if p.is_file()],
-        key=lambda p: p.as_posix().lower(),
-    )
+    found: list[Path] = []
+    for suffix in PACKAGE_SUFFIXES:
+        found.extend(p for p in root.rglob(f"*{suffix}") if p.is_file())
+    return sorted(found, key=lambda p: p.as_posix().lower())
 
 
 def _sanitize_piece(value: Any) -> str:
