@@ -1,6 +1,6 @@
 # Feedpak Naming Plugin
 
-Current release: `v0.1.5`
+Current release: `v0.1.6`
 
 A Feedback plugin for previewing and applying naming rules to `.feedpak` and legacy `.sloppak` files.
 
@@ -16,6 +16,7 @@ A Feedback plugin for previewing and applying naming rules to `.feedpak` and leg
 - store a default rule and optionally run it later from one backend route
 - scans the whole DLC root so it matches what Feedback's Song Library sees
 - includes both `.feedpak` and legacy `.sloppak` packages in preview/apply
+- excludes Feedback built-in starter/tutorial/diagnostic content by default, with an advanced opt-in checkbox when you do want those included
 
 ## Demo
 ### Example flow
@@ -87,10 +88,13 @@ feedpak-naming-plugin/
 ## Behavior notes
 - The plugin scans the whole DLC root, not just `sloppak/`, so it lines up with Song Library.
 - The plugin includes both `.feedpak` and `.sloppak` files in preview and apply.
+- Feedback built-in content (`starter/`, `tutorials-builtin/`, `diagnostics-builtin/`) is excluded from preview/apply by default.
+- Use **Include Feedback built-in content** if you want preview/apply to include those built-in packages.
 - Renamed output still uses the modern `.feedpak` extension by default.
 - The plugin only creates subfolders when your template includes `/`.
 - Preview rows are selectable; unchecked rows are excluded from apply.
 - **Preview** and **Apply selected** use the currently visible duplicate-handling mode immediately, even if you have not clicked **Save defaults**.
+- If you change the naming rule, preset, duplicate handling, or built-in-content checkbox after previewing, the plugin marks the preview stale so you know to run **Preview** again.
 - **Stop on conflicts** blocks the batch if the currently selected rows still conflict.
 - **Auto-number duplicates** resolves collisions by choosing the next available numbered filename such as `(2)`.
 - **Skip conflicting rows** continues with ready rows and leaves conflicting rows untouched; preview labels those rows as **skipped**.

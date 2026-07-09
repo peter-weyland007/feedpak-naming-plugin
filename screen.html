@@ -46,8 +46,15 @@
                 <option value="auto_number">Auto-number duplicates</option>
                 <option value="skip_conflicts">Skip conflicting rows</option>
               </select>
-              <span class="mt-2 block text-xs text-gray-400">Choose whether duplicate target names should block the run, be auto-numbered, or be left untouched while ready rows continue.</span>
             </label>
+            <label class="flex items-start gap-3 text-sm text-gray-200">
+              <input id="feedpak-naming-include-builtins" type="checkbox" class="mt-1 h-4 w-4 rounded border-dark-300 bg-dark-800 text-blue-500 focus:ring-blue-500" />
+              <span>
+                <span class="block font-medium">Include Feedback built-in content</span>
+                <span class="block text-xs text-gray-400">Off by default. When enabled, starter, tutorial, and diagnostic packages are included in preview/apply.</span>
+              </span>
+            </label>
+
           </div>
           <button id="feedpak-naming-save-settings" class="mt-3 w-full rounded-lg bg-slate-600 px-4 py-2 text-sm font-medium text-white hover:bg-slate-500">Save defaults</button>
         </div>

@@ -289,6 +289,7 @@
         if (templateInput()) templateInput().value = settings.default_template || DEFAULT_TEMPLATE;
         if ($('feedpak-naming-auto-apply')) $('feedpak-naming-auto-apply').checked = !!settings.auto_apply_after_import;
         if ($('feedpak-naming-duplicate-handling')) $('feedpak-naming-duplicate-handling').value = settings.duplicate_handling || 'stop';
+        if ($('feedpak-naming-include-builtins')) $('feedpak-naming-include-builtins').checked = !!settings.include_builtin_content;
         renderPresetOptions();
         syncPresetNameFromSelection();
         setStatus('Ready.');
@@ -299,6 +300,7 @@
             default_template: currentTemplate(),
             auto_apply_after_import: !!($('feedpak-naming-auto-apply') && $('feedpak-naming-auto-apply').checked),
             duplicate_handling: duplicateHandlingValue(),
+            include_builtin_content: !!($('feedpak-naming-include-builtins') && $('feedpak-naming-include-builtins').checked),
             presets: currentPresets(),
         };
         if (extra) {
@@ -318,16 +320,19 @@
     async function runPreview() {
         const template = currentTemplate();
         const mode = duplicateHandlingValue();
+        const includeBuiltins = !!($('feedpak-naming-include-builtins') && $('feedpak-naming-include-builtins').checked);
         setStatus('Building preview…');
         try {
             const preview = await api(
                 '/preview?template=' + encodeURIComponent(template) +
-                '&duplicate_handling=' + encodeURIComponent(mode)
+                '&duplicate_handling=' + encodeURIComponent(mode) +
+                '&include_builtin_content=' + encodeURIComponent(includeBuiltins ? 'true' : 'false')
             );
             state.preview = preview;
             state.settings = Object.assign({}, state.settings || {}, {
                 duplicate_handling: preview.duplicate_handling || mode,
-                auto_number_conflicts: preview.auto_number_conflicts === true
+                auto_number_conflicts: preview.auto_number_conflicts === true,
+                include_builtin_content: includeBuiltins
             });
             resetSelection(preview);
             renderPreview(preview);
@@ -371,7 +376,8 @@
                 body: JSON.stringify({
                     template: template,
                     selected_current_paths: selectedPaths,
-                    duplicate_handling: duplicateHandlingValue()
+                    duplicate_handling: duplicateHandlingValue(),
+                    include_builtin_content: !!($('feedpak-naming-include-builtins') && $('feedpak-naming-include-builtins').checked)
                 }),
             });
             const skipped = result.skipped_conflict_count || 0;
@@ -452,6 +458,11 @@
         }
     }
 
+    function markPreviewStale(message) {
+        if (!state.preview) return;
+        setStatus(message || 'Settings changed. Run Preview again to refresh the results.');
+    }
+
     function bind() {
         const previewBtn = $('feedpak-naming-preview');
         const applyBtn = $('feedpak-naming-apply');
@@ -464,6 +475,8 @@
         const clearSelectionBtn = $('feedpak-naming-clear-selection');
         const input = templateInput();
         const select = presetSelect();
+        const duplicateHandling = $('feedpak-naming-duplicate-handling');
+        const includeBuiltins = $('feedpak-naming-include-builtins');
 
         if (input && !input.dataset.bound) {
             input.dataset.bound = '1';
@@ -473,6 +486,9 @@
                     runPreview();
                 }
             });
+            input.addEventListener('input', function () {
+                markPreviewStale('Naming rule changed. Run Preview again to refresh the results.');
+            });
         }
         if (select && !select.dataset.bound) {
             select.dataset.bound = '1';
@@ -480,6 +496,19 @@
                 const preset = selectedPreset();
                 if (preset && input) input.value = preset.template || DEFAULT_TEMPLATE;
                 syncPresetNameFromSelection();
+                markPreviewStale('Preset changed. Run Preview again to refresh the results.');
+            });
+        }
+        if (duplicateHandling && !duplicateHandling.dataset.bound) {
+            duplicateHandling.dataset.bound = '1';
+            duplicateHandling.addEventListener('change', function () {
+                markPreviewStale('Duplicate handling changed. Run Preview again to refresh the results.');
+            });
+        }
+        if (includeBuiltins && !includeBuiltins.dataset.bound) {
+            includeBuiltins.dataset.bound = '1';
+            includeBuiltins.addEventListener('change', function () {
+                markPreviewStale('Built-in content setting changed. Run Preview again to refresh the results.');
             });
         }
         if (previewBtn && !previewBtn.dataset.bound) { previewBtn.dataset.bound = '1'; previewBtn.addEventListener('click', runPreview); }

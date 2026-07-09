@@ -475,6 +475,127 @@ def test_settings_round_trip_duplicate_handling_skip_conflicts(tmp_path):
 
 
 
+def test_settings_round_trip_include_builtin_content_flag(tmp_path):
+    dlc = tmp_path / "dlc"
+    dlc.mkdir(parents=True)
+    cfg = tmp_path / "config"
+    cfg.mkdir()
+
+    app = FastAPI()
+    MODULE.setup(
+        app,
+        {
+            "log": type("L", (), {"info": lambda *a, **k: None, "warning": lambda *a, **k: None})(),
+            "config_dir": cfg,
+            "get_dlc_dir": lambda: dlc,
+            "extract_meta": lambda path: {},
+        },
+    )
+    client = TestClient(app)
+
+    loaded = client.get("/api/plugins/feedpak_naming/settings")
+    assert loaded.status_code == 200
+    assert loaded.json()["include_builtin_content"] is False
+
+    saved = client.post(
+        "/api/plugins/feedpak_naming/settings",
+        json={"include_builtin_content": True},
+    )
+    assert saved.status_code == 200
+    assert saved.json()["include_builtin_content"] is True
+
+    loaded_after = client.get("/api/plugins/feedpak_naming/settings")
+    assert loaded_after.status_code == 200
+    assert loaded_after.json()["include_builtin_content"] is True
+
+
+
+def test_preview_excludes_builtin_folders_by_default(tmp_path):
+    dlc = tmp_path / "dlc"
+    (dlc / "sloppak").mkdir(parents=True)
+    (dlc / "sloppak" / "inside.feedpak").write_text("fake")
+    (dlc / "starter").mkdir(parents=True)
+    (dlc / "starter" / "outside.feedpak").write_text("fake")
+    (dlc / "diagnostics-builtin").mkdir(parents=True)
+    (dlc / "diagnostics-builtin" / "diagnostic.sloppak").write_text("fake")
+    (dlc / "tutorials-builtin" / "intro-bends").mkdir(parents=True)
+    (dlc / "tutorials-builtin" / "intro-bends" / "lesson.sloppak").write_text("fake")
+    (dlc / "legacy").mkdir(parents=True)
+    (dlc / "legacy" / "old.sloppak").write_text("fake")
+    cfg = tmp_path / "config"
+    cfg.mkdir()
+
+    app = FastAPI()
+    MODULE.setup(
+        app,
+        {
+            "log": type("L", (), {"info": lambda *a, **k: None, "warning": lambda *a, **k: None})(),
+            "config_dir": cfg,
+            "get_dlc_dir": lambda: dlc,
+            "extract_meta": lambda path: {"artist": "A", "title": path.stem},
+        },
+    )
+    client = TestClient(app)
+
+    preview = client.get("/api/plugins/feedpak_naming/preview", params={"template": "{artist}_{title}.feedpak"})
+    assert preview.status_code == 200
+    rows = preview.json()["items"]
+    current_paths = {row["current_relative_path"] for row in rows}
+    assert "sloppak/inside.feedpak" in current_paths
+    assert "legacy/old.sloppak" in current_paths
+    assert "starter/outside.feedpak" not in current_paths
+    assert "diagnostics-builtin/diagnostic.sloppak" not in current_paths
+    assert "tutorials-builtin/intro-bends/lesson.sloppak" not in current_paths
+    assert len(rows) == 2
+
+
+
+def test_preview_can_include_builtin_folders_when_enabled(tmp_path):
+    dlc = tmp_path / "dlc"
+    (dlc / "sloppak").mkdir(parents=True)
+    (dlc / "sloppak" / "inside.feedpak").write_text("fake")
+    (dlc / "starter").mkdir(parents=True)
+    (dlc / "starter" / "outside.feedpak").write_text("fake")
+    (dlc / "diagnostics-builtin").mkdir(parents=True)
+    (dlc / "diagnostics-builtin" / "diagnostic.sloppak").write_text("fake")
+    (dlc / "tutorials-builtin" / "intro-bends").mkdir(parents=True)
+    (dlc / "tutorials-builtin" / "intro-bends" / "lesson.sloppak").write_text("fake")
+    (dlc / "legacy").mkdir(parents=True)
+    (dlc / "legacy" / "old.sloppak").write_text("fake")
+    cfg = tmp_path / "config"
+    cfg.mkdir()
+
+    app = FastAPI()
+    MODULE.setup(
+        app,
+        {
+            "log": type("L", (), {"info": lambda *a, **k: None, "warning": lambda *a, **k: None})(),
+            "config_dir": cfg,
+            "get_dlc_dir": lambda: dlc,
+            "extract_meta": lambda path: {"artist": "A", "title": path.stem},
+        },
+    )
+    client = TestClient(app)
+
+    saved = client.post(
+        "/api/plugins/feedpak_naming/settings",
+        json={"include_builtin_content": True},
+    )
+    assert saved.status_code == 200
+
+    preview = client.get("/api/plugins/feedpak_naming/preview", params={"template": "{artist}_{title}.feedpak"})
+    assert preview.status_code == 200
+    rows = preview.json()["items"]
+    current_paths = {row["current_relative_path"] for row in rows}
+    assert "sloppak/inside.feedpak" in current_paths
+    assert "legacy/old.sloppak" in current_paths
+    assert "starter/outside.feedpak" in current_paths
+    assert "diagnostics-builtin/diagnostic.sloppak" in current_paths
+    assert "tutorials-builtin/intro-bends/lesson.sloppak" in current_paths
+    assert len(rows) == 5
+
+
+
 def test_preview_scans_whole_dlc_root_and_legacy_sloppak_suffix(tmp_path):
     dlc = tmp_path / "dlc"
     (dlc / "sloppak").mkdir(parents=True)
@@ -497,6 +618,12 @@ def test_preview_scans_whole_dlc_root_and_legacy_sloppak_suffix(tmp_path):
         },
     )
     client = TestClient(app)
+
+    saved = client.post(
+        "/api/plugins/feedpak_naming/settings",
+        json={"include_builtin_content": True},
+    )
+    assert saved.status_code == 200
 
     preview = client.get("/api/plugins/feedpak_naming/preview", params={"template": "{artist}_{title}.feedpak"})
     assert preview.status_code == 200

@@ -13,6 +13,7 @@ PLUGIN_ID = "feedpak_naming"
 PACKAGE_SUFFIX = ".feedpak"
 PACKAGE_SUFFIXES = (".feedpak", ".sloppak")
 DEFAULT_TEMPLATE = "{artist}_{title}.feedpak"
+BUILTIN_CONTENT_DIRS = {"diagnostics-builtin", "starter", "tutorials-builtin"}
 DUPLICATE_HANDLING_STOP = "stop"
 DUPLICATE_HANDLING_AUTO_NUMBER = "auto_number"
 DUPLICATE_HANDLING_SKIP_CONFLICTS = "skip_conflicts"
@@ -36,12 +37,23 @@ def _scan_root(dlc: Path) -> Path:
     return dlc
 
 
-def _iter_feedpaks(root: Path) -> list[Path]:
+def _iter_feedpaks(root: Path, include_builtin_content: bool = False) -> list[Path]:
     if not root.exists():
         return []
     found: list[Path] = []
     for suffix in PACKAGE_SUFFIXES:
-        found.extend(p for p in root.rglob(f"*{suffix}") if p.is_file())
+        for path in root.rglob(f"*{suffix}"):
+            if not path.is_file():
+                continue
+            if not include_builtin_content:
+                try:
+                    rel = path.relative_to(root)
+                except ValueError:
+                    rel = path
+                first_part = rel.parts[0] if rel.parts else ""
+                if first_part in BUILTIN_CONTENT_DIRS:
+                    continue
+            found.append(path)
     return sorted(found, key=lambda p: p.as_posix().lower())
 
 
@@ -149,6 +161,7 @@ def _normalize_settings(raw: dict[str, Any]) -> dict[str, Any]:
         "auto_apply_after_import": bool(raw.get("auto_apply_after_import") is True),
         "auto_number_conflicts": duplicate_handling == DUPLICATE_HANDLING_AUTO_NUMBER,
         "duplicate_handling": duplicate_handling,
+        "include_builtin_content": bool(raw.get("include_builtin_content") is True),
         "presets": cleaned_presets,
     }
 
@@ -268,8 +281,9 @@ def _preview_items(
     template: str,
     selected_current_paths: set[str] | None = None,
     duplicate_handling: str = DUPLICATE_HANDLING_STOP,
+    include_builtin_content: bool = False,
 ) -> dict[str, Any]:
-    files = _iter_feedpaks(root)
+    files = _iter_feedpaks(root, include_builtin_content=include_builtin_content)
     items: list[dict[str, Any]] = []
 
     for path in files:
@@ -342,18 +356,28 @@ def setup(app, context):
         )
         if raw_duplicate_handling is None and not bool(payload.get("auto_number_conflicts") is True):
             duplicate_handling = current.get("duplicate_handling") or DUPLICATE_HANDLING_STOP
+        include_builtin_content = (
+            bool(payload.get("include_builtin_content") is True)
+            if "include_builtin_content" in payload
+            else bool(current.get("include_builtin_content") is True)
+        )
         settings = _normalize_settings({
             "default_template": str(payload.get("default_template") or current["default_template"]).strip() or DEFAULT_TEMPLATE,
             "auto_apply_after_import": bool(payload.get("auto_apply_after_import") is True),
             "duplicate_handling": duplicate_handling,
             "auto_number_conflicts": duplicate_handling == DUPLICATE_HANDLING_AUTO_NUMBER,
+            "include_builtin_content": include_builtin_content,
             "presets": presets,
         })
         _save_settings(config_file, settings)
         return settings
 
     @router.get("/preview")
-    def preview(template: str | None = None, duplicate_handling: str | None = None):
+    def preview(
+        template: str | None = None,
+        duplicate_handling: str | None = None,
+        include_builtin_content: bool | None = None,
+    ):
         dlc = _dlc_root()
         if not dlc or not dlc.exists():
             return JSONResponse({"error": "DLC directory not found"}, status_code=500)
@@ -363,8 +387,19 @@ def setup(app, context):
             duplicate_handling,
             legacy_auto_number_conflicts=settings["duplicate_handling"] == DUPLICATE_HANDLING_AUTO_NUMBER,
         )
+        chosen_include_builtin_content = (
+            bool(include_builtin_content)
+            if include_builtin_content is not None
+            else bool(settings.get("include_builtin_content") is True)
+        )
         root = _scan_root(dlc)
-        return _preview_items(root, _meta, chosen, duplicate_handling=chosen_duplicate_handling)
+        return _preview_items(
+            root,
+            _meta,
+            chosen,
+            duplicate_handling=chosen_duplicate_handling,
+            include_builtin_content=chosen_include_builtin_content,
+        )
 
     @router.post("/apply")
     def apply(payload: dict[str, Any] = Body(default={})):  # noqa: B008 - FastAPI dependency style
@@ -379,6 +414,11 @@ def setup(app, context):
         )
         if raw_duplicate_handling is None and not bool(payload.get("auto_number_conflicts") is True):
             duplicate_handling = settings["duplicate_handling"]
+        include_builtin_content = (
+            bool(payload.get("include_builtin_content") is True)
+            if "include_builtin_content" in payload
+            else bool(settings.get("include_builtin_content") is True)
+        )
         template = str(payload.get("template") or settings["default_template"] or DEFAULT_TEMPLATE)
         selected_raw = payload.get("selected_current_paths")
         selected_current_paths = {
@@ -393,6 +433,7 @@ def setup(app, context):
             template,
             selected_current_paths=selected_current_paths,
             duplicate_handling=duplicate_handling,
+            include_builtin_content=include_builtin_content,
         )
         blockers = [item for item in preview_data["items"] if item["status"] == "conflict"]
         if blockers and duplicate_handling != DUPLICATE_HANDLING_SKIP_CONFLICTS:
