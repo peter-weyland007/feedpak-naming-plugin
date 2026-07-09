@@ -37,6 +37,10 @@ def _scan_root(dlc: Path) -> Path:
     return dlc
 
 
+def _same_relative_path(current: str, proposed: str) -> bool:
+    return current.casefold() == proposed.casefold()
+
+
 def _iter_feedpaks(root: Path, include_builtin_content: bool = False) -> list[Path]:
     if not root.exists():
         return []
@@ -303,7 +307,7 @@ def _preview_items(
                 "title": raw.get("title") or path.stem,
                 "album": raw.get("album") or "",
                 "year": raw.get("year") or "",
-                "actionable": rel_current != rel_proposed,
+                "actionable": not _same_relative_path(rel_current, rel_proposed),
                 "target_exists": proposed_path.exists() and proposed_path != path,
             }
         )

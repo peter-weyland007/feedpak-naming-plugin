@@ -1,6 +1,6 @@
 # Feedpak Naming Plugin
 
-Current release: `v0.1.6`
+Current release: `v0.1.7`
 
 A Feedback plugin for previewing and applying naming rules to `.feedpak` and legacy `.sloppak` files.
 
@@ -17,6 +17,7 @@ A Feedback plugin for previewing and applying naming rules to `.feedpak` and leg
 - scans the whole DLC root so it matches what Feedback's Song Library sees
 - includes both `.feedpak` and legacy `.sloppak` packages in preview/apply
 - excludes Feedback built-in starter/tutorial/diagnostic content by default, with an advanced opt-in checkbox when you do want those included
+- treats case-only path differences as unchanged, so folder capitalization cleanups do not get flagged as actionable renames
 
 ## Demo
 ### Example flow
@@ -98,6 +99,7 @@ feedpak-naming-plugin/
 - **Stop on conflicts** blocks the batch if the currently selected rows still conflict.
 - **Auto-number duplicates** resolves collisions by choosing the next available numbered filename such as `(2)`.
 - **Skip conflicting rows** continues with ready rows and leaves conflicting rows untouched; preview labels those rows as **skipped**.
+- Case-only differences in the current vs proposed relative path are treated as **unchanged** instead of actionable renames.
 - The preview blocks apply only when the currently selected rows still conflict and you are using **Stop on conflicts**.
 - Saved defaults and presets are stored by the plugin backend in Feedback's config area.
 - The backend exposes a default-run route for future import/conversion hookups.

@@ -24,6 +24,27 @@ def test_render_name_supports_nested_folders_safely():
     assert result == "Paramore/Hallelujah.feedpak"
 
 
+def test_preview_treats_case_only_path_differences_as_unchanged(tmp_path):
+    dlc = tmp_path / "dlc"
+    artist_dir = dlc / "Echo - the Bunnymen"
+    artist_dir.mkdir(parents=True)
+    song = artist_dir / "Lips Like Sugar.feedpak"
+    song.write_text("fake")
+
+    preview = MODULE._preview_items(
+        dlc,
+        lambda path: {"artist": "Echo - The Bunnymen", "title": "Lips Like Sugar"},
+        "{artist}/{title}.feedpak",
+    )
+
+    row = preview["items"][0]
+    assert row["current_relative_path"] == "Echo - the Bunnymen/Lips Like Sugar.feedpak"
+    assert row["proposed_relative_path"] == "Echo - The Bunnymen/Lips Like Sugar.feedpak"
+    assert row["status"] == "unchanged"
+    assert preview["rename_count"] == 0
+    assert preview["unchanged_count"] == 1
+
+
 def test_apply_can_limit_changes_to_selected_preview_rows(tmp_path):
     dlc = tmp_path / "dlc"
     lib = dlc / "sloppak"
