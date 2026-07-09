@@ -132,16 +132,16 @@ def _selected_for_item(item: dict[str, Any], explicit_selection: set[str] | None
 
 
 def _annotate_items(items: list[dict[str, Any]], explicit_selection: set[str] | None) -> dict[str, Any]:
-    selected_current_paths = {
-        item["current_relative_path"]
-        for item in items
-        if _selected_for_item(item, explicit_selection)
-    }
     selected_target_counts: Counter[str] = Counter(
         item["proposed_relative_path"]
         for item in items
         if _selected_for_item(item, explicit_selection)
     )
+    selected_paths_that_will_be_vacated = {
+        item["current_relative_path"]
+        for item in items
+        if _selected_for_item(item, explicit_selection) and item["actionable"]
+    }
 
     rename_count = 0
     unchanged_count = 0
@@ -167,7 +167,7 @@ def _annotate_items(items: list[dict[str, Any]], explicit_selection: set[str] | 
                 status = "conflict"
                 error = "Another selected file would get the same name."
                 conflict_count += 1
-            elif item["target_exists"] and item["proposed_relative_path"] not in selected_current_paths:
+            elif item["target_exists"] and item["proposed_relative_path"] not in selected_paths_that_will_be_vacated:
                 status = "conflict"
                 error = "A file with that name already exists."
                 conflict_count += 1

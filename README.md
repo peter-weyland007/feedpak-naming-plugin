@@ -1,6 +1,6 @@
 # Feedpak Naming Plugin
 
-Current release: `v0.1.3`
+Current release: `v0.1.4`
 
 A Feedback plugin for previewing and applying naming rules to `.feedpak` and legacy `.sloppak` files.
 

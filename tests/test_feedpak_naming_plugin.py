@@ -112,6 +112,52 @@ def test_selected_subset_can_resolve_duplicate_target_conflicts(tmp_path):
     assert second.exists()
 
 
+def test_preview_marks_conflict_when_selected_unchanged_row_already_occupies_target(tmp_path):
+    dlc = tmp_path / "dlc"
+    lib = dlc / "sloppak"
+    lib.mkdir(parents=True)
+    source = lib / "Children_Of_Bodom_Silent_Night_Bodom_Night_NA_DD.sloppak"
+    source.write_text("fake")
+    target_dir = dlc / "Children Of Bodom"
+    target_dir.mkdir(parents=True)
+    existing = target_dir / "Silent Night- Bodom Night.feedpak"
+    existing.write_text("fake")
+    cfg = tmp_path / "config"
+    cfg.mkdir()
+
+    app = FastAPI()
+    MODULE.setup(
+        app,
+        {
+            "log": type("L", (), {"info": lambda *a, **k: None, "warning": lambda *a, **k: None})(),
+            "config_dir": cfg,
+            "get_dlc_dir": lambda: dlc,
+            "extract_meta": lambda path: {
+                "artist": "Children Of Bodom",
+                "title": "Silent Night- Bodom Night",
+            },
+        },
+    )
+    client = TestClient(app)
+
+    apply = client.post(
+        "/api/plugins/feedpak_naming/apply",
+        json={
+            "template": "{artist}/{title}.feedpak",
+            "selected_current_paths": [
+                "sloppak/Children_Of_Bodom_Silent_Night_Bodom_Night_NA_DD.sloppak",
+                "Children Of Bodom/Silent Night- Bodom Night.feedpak",
+            ],
+        },
+    )
+    assert apply.status_code == 409
+    body = apply.json()
+    assert "Preview has conflicts" in body["error"]
+    conflict_rows = [item for item in body["preview"]["items"] if item["status"] == "conflict"]
+    assert len(conflict_rows) == 1
+    assert conflict_rows[0]["current_relative_path"] == "sloppak/Children_Of_Bodom_Silent_Night_Bodom_Night_NA_DD.sloppak"
+
+
 def test_preview_scans_whole_dlc_root_and_legacy_sloppak_suffix(tmp_path):
     dlc = tmp_path / "dlc"
     (dlc / "sloppak").mkdir(parents=True)
