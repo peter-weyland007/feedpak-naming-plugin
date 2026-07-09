@@ -1,6 +1,6 @@
 # Feedpak Naming Plugin
 
-Current release: `v0.1.4`
+Current release: `v0.1.5`
 
 A Feedback plugin for previewing and applying naming rules to `.feedpak` and legacy `.sloppak` files.
 
@@ -11,6 +11,8 @@ A Feedback plugin for previewing and applying naming rules to `.feedpak` and leg
 - create flat filenames like `{artist}_{title}.feedpak`
 - create artist/title folder layouts like `{artist}/{title}.feedpak`
 - save reusable presets
+- choose duplicate handling: **Stop on conflicts**, **Auto-number duplicates**, or **Skip conflicting rows**
+- preview and apply use the **current duplicate-handling dropdown immediately**, without requiring **Save defaults** first
 - store a default rule and optionally run it later from one backend route
 - scans the whole DLC root so it matches what Feedback's Song Library sees
 - includes both `.feedpak` and legacy `.sloppak` packages in preview/apply
@@ -19,10 +21,14 @@ A Feedback plugin for previewing and applying naming rules to `.feedpak` and leg
 ### Example flow
 1. Open the **Naming** plugin in Feedback.
 2. Pick a preset or type a rule such as `{artist}/{title}.feedpak`.
-3. Click **Preview** to see current name → new name for every supported package.
-4. Leave checked only the rows you want to rename.
-5. Click **Apply selected**.
-6. Optional: save that rule as the default and use **Run saved default now** later.
+3. Choose how duplicate target names should be handled:
+   - **Stop on conflicts** → block the batch if selected rows still conflict
+   - **Auto-number duplicates** → keep going and rename collisions like `(2)`, `(3)`, etc.
+   - **Skip conflicting rows** → keep going, but leave conflicting rows untouched
+4. Click **Preview** to see current name → new name for every supported package.
+5. Leave checked only the rows you want to rename.
+6. Click **Apply selected**.
+7. Optional: save that rule as the default and use **Run saved default now** later.
 
 ### Screenshot
 ![Feedpak Naming demo](assets/demo-preview.svg)
@@ -84,7 +90,11 @@ feedpak-naming-plugin/
 - Renamed output still uses the modern `.feedpak` extension by default.
 - The plugin only creates subfolders when your template includes `/`.
 - Preview rows are selectable; unchecked rows are excluded from apply.
-- The preview blocks apply only when the currently selected rows still conflict.
+- **Preview** and **Apply selected** use the currently visible duplicate-handling mode immediately, even if you have not clicked **Save defaults**.
+- **Stop on conflicts** blocks the batch if the currently selected rows still conflict.
+- **Auto-number duplicates** resolves collisions by choosing the next available numbered filename such as `(2)`.
+- **Skip conflicting rows** continues with ready rows and leaves conflicting rows untouched; preview labels those rows as **skipped**.
+- The preview blocks apply only when the currently selected rows still conflict and you are using **Stop on conflicts**.
 - Saved defaults and presets are stored by the plugin backend in Feedback's config area.
 - The backend exposes a default-run route for future import/conversion hookups.
 
@@ -106,10 +116,12 @@ feedpak-naming-plugin/
   screen.js
   tests/
     test_feedpak_naming_plugin.py
+    preview-state.test.mjs
 ```
 
 ## Development verification
 Verified with:
 - `pytest tests/test_feedpak_naming_plugin.py -q`
+- `node --test tests/preview-state.test.mjs`
 - `python -m py_compile routes.py`
 - `node --check screen.js`
