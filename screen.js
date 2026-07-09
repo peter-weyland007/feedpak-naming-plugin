@@ -48,11 +48,26 @@
         el.textContent = text || '';
     }
 
+    function duplicateHandlingValue() {
+        const select = $('feedpak-naming-duplicate-handling');
+        const value = select && select.value ? select.value : (state.settings && state.settings.duplicate_handling);
+        return value || 'stop';
+    }
+
+    function duplicateHandlingLabel(mode) {
+        return {
+            stop: 'stop on conflicts',
+            auto_number: 'auto-number duplicates',
+            skip_conflicts: 'skip conflicting rows'
+        }[mode || 'stop'] || 'stop on conflicts';
+    }
+
     function statusBadge(status) {
         const map = {
             rename: 'bg-blue-500/15 text-blue-300 border-blue-700/50',
             unchanged: 'bg-dark-600 text-gray-300 border-dark-300',
             conflict: 'bg-red-500/15 text-red-300 border-red-700/50',
+            skipped: 'bg-yellow-500/15 text-yellow-300 border-yellow-700/50',
             excluded: 'bg-amber-500/15 text-amber-300 border-amber-700/50',
         };
         const cls = map[status] || map.unchanged;
@@ -86,14 +101,18 @@
         state.selectedPaths = new Set(items.map(function (item) { return item.current_relative_path; }));
     }
 
-    function derivePreview(preview) {
+    function derivePreviewState(preview, options) {
         const items = Array.isArray(preview && preview.items) ? preview.items : [];
+        const selectedSet = new Set(((options && options.selectedPaths) || []).map(function (path) {
+            return String(path);
+        }));
+        const duplicateHandling = (options && options.duplicateHandling) || 'stop';
         const selectedCurrent = new Set();
         const selectedTargetCounts = Object.create(null);
 
         items.forEach(function (item) {
             if (!item.actionable) return;
-            if (state.selectedPaths.has(item.current_relative_path)) {
+            if (selectedSet.has(item.current_relative_path)) {
                 selectedCurrent.add(item.current_relative_path);
                 selectedTargetCounts[item.proposed_relative_path] = (selectedTargetCounts[item.proposed_relative_path] || 0) + 1;
             }
@@ -104,10 +123,12 @@
         let unchangedCount = 0;
         let conflictCount = 0;
         let excludedCount = 0;
+        let skippedCount = 0;
         let selectedCount = 0;
+        let autoNumberedCount = 0;
 
         items.forEach(function (item) {
-            const selected = !!item.actionable && state.selectedPaths.has(item.current_relative_path);
+            const selected = !!item.actionable && selectedSet.has(item.current_relative_path);
             let status = 'unchanged';
             let error = null;
             if (!item.actionable) {
@@ -117,17 +138,26 @@
                 excludedCount += 1;
             } else {
                 selectedCount += 1;
-                if ((selectedTargetCounts[item.proposed_relative_path] || 0) > 1) {
-                    status = 'conflict';
-                    error = 'Another selected file would get the same name.';
-                    conflictCount += 1;
-                } else if (item.target_exists && !selectedCurrent.has(item.proposed_relative_path)) {
-                    status = 'conflict';
-                    error = 'A file with that name already exists.';
-                    conflictCount += 1;
+                const duplicateSelectedTarget = (selectedTargetCounts[item.proposed_relative_path] || 0) > 1;
+                const collidesWithExisting = item.target_exists && !selectedCurrent.has(item.proposed_relative_path);
+                if (duplicateSelectedTarget || collidesWithExisting) {
+                    if (duplicateHandling === 'skip_conflicts') {
+                        status = 'skipped';
+                        error = duplicateSelectedTarget
+                            ? 'Will be skipped because another selected file would get the same name.'
+                            : 'Will be skipped because a file with that name already exists.';
+                        skippedCount += 1;
+                    } else {
+                        status = 'conflict';
+                        error = duplicateSelectedTarget
+                            ? 'Another selected file would get the same name.'
+                            : 'A file with that name already exists.';
+                        conflictCount += 1;
+                    }
                 } else {
                     status = 'rename';
                     renameCount += 1;
+                    if (item.auto_numbered_from) autoNumberedCount += 1;
                 }
             }
             derivedItems.push(Object.assign({}, item, {
@@ -144,18 +174,40 @@
             unchangedCount: unchangedCount,
             conflictCount: conflictCount,
             excludedCount: excludedCount,
+            skippedCount: skippedCount,
             selectedCount: selectedCount,
+            autoNumberedCount: autoNumberedCount,
         };
     }
 
-    function updateSummary(derived) {
-        setSummary(
-            derived.renameCount + ' selected rename, ' +
-            derived.excludedCount + ' excluded, ' +
-            derived.conflictCount + ' conflicts, ' +
-            derived.unchangedCount + ' unchanged'
-        );
+    function derivePreview(preview) {
+        return derivePreviewState(preview, {
+            selectedPaths: Array.from(state.selectedPaths || []),
+            duplicateHandling: duplicateHandlingValue(),
+        });
     }
+
+    function updateSummary(derived) {
+        var parts = [
+            derived.renameCount + ' selected rename',
+            derived.excludedCount + ' excluded'
+        ];
+        if (duplicateHandlingValue() === 'skip_conflicts') {
+            parts.push((derived.skippedCount || 0) + ' skipped');
+        } else {
+            parts.push(derived.conflictCount + ' conflicts');
+        }
+        parts.push(derived.unchangedCount + ' unchanged');
+        if (derived.autoNumberedCount) {
+            parts.push(derived.autoNumberedCount + ' auto-numbered');
+        }
+        parts.push(duplicateHandlingLabel(duplicateHandlingValue()));
+        setSummary(parts.join(', '));
+    }
+
+    state.__test = {
+        derivePreview: derivePreviewState,
+    };
 
     function renderPresetOptions() {
         const select = presetSelect();
@@ -220,7 +272,10 @@
                 '<td class="px-4 py-3">' + esc(item.artist || '') + '</td>' +
                 '<td class="px-4 py-3">' + esc(item.title || '') + '</td>' +
                 '<td class="px-4 py-3 font-mono text-xs text-gray-400">' + esc(item.current_relative_path || '') + '</td>' +
-                '<td class="px-4 py-3 font-mono text-xs text-gray-200">' + esc(item.proposed_relative_path || '') + (item.effectiveError ? '<div class="mt-1 text-red-400">' + esc(item.effectiveError) + '</div>' : '') + '</td>' +
+                '<td class="px-4 py-3 font-mono text-xs text-gray-200">' + esc(item.proposed_relative_path || '') +
+                    (item.auto_numbered_from ? '<div class="mt-1 text-amber-300">Auto-numbered from ' + esc(item.auto_numbered_from) + '</div>' : '') +
+                    (item.effectiveError ? '<div class="mt-1 text-red-400">' + esc(item.effectiveError) + '</div>' : '') +
+                '</td>' +
                 '</tr>';
         }).join('');
         bindPreviewSelectionRows();
@@ -233,6 +288,7 @@
         state.settings = settings;
         if (templateInput()) templateInput().value = settings.default_template || DEFAULT_TEMPLATE;
         if ($('feedpak-naming-auto-apply')) $('feedpak-naming-auto-apply').checked = !!settings.auto_apply_after_import;
+        if ($('feedpak-naming-duplicate-handling')) $('feedpak-naming-duplicate-handling').value = settings.duplicate_handling || 'stop';
         renderPresetOptions();
         syncPresetNameFromSelection();
         setStatus('Ready.');
@@ -242,6 +298,7 @@
         const payload = {
             default_template: currentTemplate(),
             auto_apply_after_import: !!($('feedpak-naming-auto-apply') && $('feedpak-naming-auto-apply').checked),
+            duplicate_handling: duplicateHandlingValue(),
             presets: currentPresets(),
         };
         if (extra) {
@@ -260,14 +317,31 @@
 
     async function runPreview() {
         const template = currentTemplate();
+        const mode = duplicateHandlingValue();
         setStatus('Building preview…');
         try {
-            const preview = await api('/preview?template=' + encodeURIComponent(template));
+            const preview = await api(
+                '/preview?template=' + encodeURIComponent(template) +
+                '&duplicate_handling=' + encodeURIComponent(mode)
+            );
             state.preview = preview;
+            state.settings = Object.assign({}, state.settings || {}, {
+                duplicate_handling: preview.duplicate_handling || mode,
+                auto_number_conflicts: preview.auto_number_conflicts === true
+            });
             resetSelection(preview);
             renderPreview(preview);
             const derived = derivePreview(preview);
-            setStatus(derived.conflictCount ? 'Preview ready. Uncheck any rows you want to exclude before applying.' : 'Preview ready.');
+            const effectiveMode = preview.duplicate_handling || mode;
+            setStatus(
+                derived.conflictCount
+                    ? (effectiveMode === 'skip_conflicts'
+                        ? 'Preview ready. Conflicting rows will be skipped if you apply.'
+                        : 'Preview ready. Choose how to handle the conflicts or deselect those rows before applying.')
+                    : (derived.autoNumberedCount
+                        ? 'Preview ready. Duplicate targets were auto-numbered.'
+                        : 'Preview ready.')
+            );
         } catch (err) {
             setStatus('Preview failed: ' + err.message, 'error');
         }
@@ -294,9 +368,18 @@
             const result = await api('/apply', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ template: template, selected_current_paths: selectedPaths }),
+                body: JSON.stringify({
+                    template: template,
+                    selected_current_paths: selectedPaths,
+                    duplicate_handling: duplicateHandlingValue()
+                }),
             });
-            setStatus('Applied ' + result.renamed_count + ' renames from ' + result.selected_count + ' selected rows.');
+            const skipped = result.skipped_conflict_count || 0;
+            setStatus(
+                skipped
+                    ? ('Applied ' + result.renamed_count + ' renames from ' + result.selected_count + ' selected rows. Skipped ' + skipped + ' conflicts.')
+                    : ('Applied ' + result.renamed_count + ' renames from ' + result.selected_count + ' selected rows.')
+            );
             await runPreview();
         } catch (err) {
             setStatus('Apply failed: ' + err.message, 'error');

@@ -13,6 +13,14 @@ PLUGIN_ID = "feedpak_naming"
 PACKAGE_SUFFIX = ".feedpak"
 PACKAGE_SUFFIXES = (".feedpak", ".sloppak")
 DEFAULT_TEMPLATE = "{artist}_{title}.feedpak"
+DUPLICATE_HANDLING_STOP = "stop"
+DUPLICATE_HANDLING_AUTO_NUMBER = "auto_number"
+DUPLICATE_HANDLING_SKIP_CONFLICTS = "skip_conflicts"
+VALID_DUPLICATE_HANDLING = {
+    DUPLICATE_HANDLING_STOP,
+    DUPLICATE_HANDLING_AUTO_NUMBER,
+    DUPLICATE_HANDLING_SKIP_CONFLICTS,
+}
 DEFAULT_PRESETS = [
     {"name": "Artist - Title", "template": "{artist}_{title}.feedpak"},
     {"name": "Title - Artist", "template": "{title}_{artist}.feedpak"},
@@ -21,6 +29,7 @@ DEFAULT_PRESETS = [
 ]
 SAFE_CHARS_RE = re.compile(r"[^A-Za-z0-9._()\-\[\] ]+")
 WHITESPACE_RE = re.compile(r"\s+")
+NUMBERED_NAME_RE = re.compile(r"^(.*) \((\d+)\)$")
 
 
 def _scan_root(dlc: Path) -> Path:
@@ -68,6 +77,27 @@ def _safe_relative_path(relative_path: str) -> Path:
     return Path(*parts)
 
 
+def _next_numbered_relative_path(relative_path: str, occupied_relative_paths: set[str]) -> str:
+    candidate = _safe_relative_path(relative_path)
+    parent = candidate.parent
+    stem = candidate.stem
+    suffix = candidate.suffix
+    match = NUMBERED_NAME_RE.match(stem)
+    if match:
+        base_stem = match.group(1)
+        next_index = int(match.group(2)) + 1
+    else:
+        base_stem = stem
+        next_index = 2
+
+    while True:
+        numbered_name = f"{base_stem} ({next_index}){suffix}"
+        numbered_relative = (parent / numbered_name).as_posix() if str(parent) != "." else numbered_name
+        if numbered_relative not in occupied_relative_paths:
+            return numbered_relative
+        next_index += 1
+
+
 def _render_values(meta: dict[str, Any], source_path: Path) -> dict[str, str]:
     return {
         "artist": _sanitize_piece(meta.get("artist") or ""),
@@ -76,6 +106,15 @@ def _render_values(meta: dict[str, Any], source_path: Path) -> dict[str, str]:
         "year": _sanitize_piece(meta.get("year") or ""),
         "input_name": _sanitize_piece(source_path.stem),
     }
+
+
+def _normalize_duplicate_handling(raw: Any, legacy_auto_number_conflicts: bool = False) -> str:
+    value = str(raw or "").strip().lower()
+    if value in VALID_DUPLICATE_HANDLING:
+        return value
+    if legacy_auto_number_conflicts:
+        return DUPLICATE_HANDLING_AUTO_NUMBER
+    return DUPLICATE_HANDLING_STOP
 
 
 def render_name(template: str, meta: dict[str, Any], source_path: Path) -> str:
@@ -101,9 +140,15 @@ def _normalize_settings(raw: dict[str, Any]) -> dict[str, Any]:
         cleaned_presets.append({"name": name, "template": template})
     if not cleaned_presets:
         cleaned_presets = list(DEFAULT_PRESETS)
+    duplicate_handling = _normalize_duplicate_handling(
+        raw.get("duplicate_handling"),
+        legacy_auto_number_conflicts=bool(raw.get("auto_number_conflicts") is True),
+    )
     return {
         "default_template": str(raw.get("default_template") or DEFAULT_TEMPLATE).strip() or DEFAULT_TEMPLATE,
         "auto_apply_after_import": bool(raw.get("auto_apply_after_import") is True),
+        "auto_number_conflicts": duplicate_handling == DUPLICATE_HANDLING_AUTO_NUMBER,
+        "duplicate_handling": duplicate_handling,
         "presets": cleaned_presets,
     }
 
@@ -131,17 +176,46 @@ def _selected_for_item(item: dict[str, Any], explicit_selection: set[str] | None
     return item["current_relative_path"] in explicit_selection
 
 
-def _annotate_items(items: list[dict[str, Any]], explicit_selection: set[str] | None) -> dict[str, Any]:
-    selected_target_counts: Counter[str] = Counter(
-        item["proposed_relative_path"]
-        for item in items
-        if _selected_for_item(item, explicit_selection)
-    )
+def _annotate_items(
+    items: list[dict[str, Any]],
+    explicit_selection: set[str] | None,
+    duplicate_handling: str = DUPLICATE_HANDLING_STOP,
+) -> dict[str, Any]:
     selected_paths_that_will_be_vacated = {
         item["current_relative_path"]
         for item in items
         if _selected_for_item(item, explicit_selection) and item["actionable"]
     }
+
+    if duplicate_handling == DUPLICATE_HANDLING_AUTO_NUMBER:
+        occupied_relative_paths = {
+            item["current_relative_path"]
+            for item in items
+            if item["current_relative_path"] not in selected_paths_that_will_be_vacated
+        }
+        reserved_relative_paths: set[str] = set()
+        for item in items:
+            item["auto_numbered_from"] = None
+            if not _selected_for_item(item, explicit_selection):
+                continue
+            desired_relative_path = item["proposed_relative_path"]
+            resolved_relative_path = desired_relative_path
+            if resolved_relative_path in occupied_relative_paths or resolved_relative_path in reserved_relative_paths:
+                resolved_relative_path = _next_numbered_relative_path(
+                    desired_relative_path,
+                    occupied_relative_paths | reserved_relative_paths,
+                )
+                item["auto_numbered_from"] = desired_relative_path
+            item["proposed_relative_path"] = resolved_relative_path
+            item["proposed_path"] = str(item["root"] / resolved_relative_path)
+            item["target_exists"] = False
+            reserved_relative_paths.add(resolved_relative_path)
+
+    selected_target_counts: Counter[str] = Counter(
+        item["proposed_relative_path"]
+        for item in items
+        if _selected_for_item(item, explicit_selection)
+    )
 
     rename_count = 0
     unchanged_count = 0
@@ -188,7 +262,13 @@ def _annotate_items(items: list[dict[str, Any]], explicit_selection: set[str] | 
     }
 
 
-def _preview_items(root: Path, extract_meta, template: str, selected_current_paths: set[str] | None = None) -> dict[str, Any]:
+def _preview_items(
+    root: Path,
+    extract_meta,
+    template: str,
+    selected_current_paths: set[str] | None = None,
+    duplicate_handling: str = DUPLICATE_HANDLING_STOP,
+) -> dict[str, Any]:
     files = _iter_feedpaks(root)
     items: list[dict[str, Any]] = []
 
@@ -200,6 +280,7 @@ def _preview_items(root: Path, extract_meta, template: str, selected_current_pat
         rel_proposed = proposed_path.relative_to(root).as_posix()
         items.append(
             {
+                "root": root,
                 "current_path": str(path),
                 "current_relative_path": rel_current,
                 "proposed_path": str(proposed_path),
@@ -213,10 +294,15 @@ def _preview_items(root: Path, extract_meta, template: str, selected_current_pat
             }
         )
 
-    annotated = _annotate_items(items, selected_current_paths)
+    normalized_duplicate_handling = _normalize_duplicate_handling(duplicate_handling)
+    annotated = _annotate_items(items, selected_current_paths, duplicate_handling=normalized_duplicate_handling)
+    for item in annotated["items"]:
+        item.pop("root", None)
     return {
         "template": template,
         "root": str(root),
+        "auto_number_conflicts": normalized_duplicate_handling == DUPLICATE_HANDLING_AUTO_NUMBER,
+        "duplicate_handling": normalized_duplicate_handling,
         **annotated,
     }
 
@@ -249,23 +335,36 @@ def setup(app, context):
     def settings_post(payload: dict[str, Any] = Body(default={})):  # noqa: B008
         current = _load_settings(config_file)
         presets = payload.get("presets", current["presets"])
+        raw_duplicate_handling = payload.get("duplicate_handling") if "duplicate_handling" in payload else None
+        duplicate_handling = _normalize_duplicate_handling(
+            raw_duplicate_handling,
+            legacy_auto_number_conflicts=bool(payload.get("auto_number_conflicts") is True),
+        )
+        if raw_duplicate_handling is None and not bool(payload.get("auto_number_conflicts") is True):
+            duplicate_handling = current.get("duplicate_handling") or DUPLICATE_HANDLING_STOP
         settings = _normalize_settings({
             "default_template": str(payload.get("default_template") or current["default_template"]).strip() or DEFAULT_TEMPLATE,
             "auto_apply_after_import": bool(payload.get("auto_apply_after_import") is True),
+            "duplicate_handling": duplicate_handling,
+            "auto_number_conflicts": duplicate_handling == DUPLICATE_HANDLING_AUTO_NUMBER,
             "presets": presets,
         })
         _save_settings(config_file, settings)
         return settings
 
     @router.get("/preview")
-    def preview(template: str | None = None):
+    def preview(template: str | None = None, duplicate_handling: str | None = None):
         dlc = _dlc_root()
         if not dlc or not dlc.exists():
             return JSONResponse({"error": "DLC directory not found"}, status_code=500)
         settings = _load_settings(config_file)
         chosen = str(template or settings["default_template"] or DEFAULT_TEMPLATE)
+        chosen_duplicate_handling = _normalize_duplicate_handling(
+            duplicate_handling,
+            legacy_auto_number_conflicts=settings["duplicate_handling"] == DUPLICATE_HANDLING_AUTO_NUMBER,
+        )
         root = _scan_root(dlc)
-        return _preview_items(root, _meta, chosen)
+        return _preview_items(root, _meta, chosen, duplicate_handling=chosen_duplicate_handling)
 
     @router.post("/apply")
     def apply(payload: dict[str, Any] = Body(default={})):  # noqa: B008 - FastAPI dependency style
@@ -273,6 +372,13 @@ def setup(app, context):
         if not dlc or not dlc.exists():
             return JSONResponse({"error": "DLC directory not found"}, status_code=500)
         settings = _load_settings(config_file)
+        raw_duplicate_handling = payload.get("duplicate_handling") if "duplicate_handling" in payload else None
+        duplicate_handling = _normalize_duplicate_handling(
+            raw_duplicate_handling,
+            legacy_auto_number_conflicts=bool(payload.get("auto_number_conflicts") is True),
+        )
+        if raw_duplicate_handling is None and not bool(payload.get("auto_number_conflicts") is True):
+            duplicate_handling = settings["duplicate_handling"]
         template = str(payload.get("template") or settings["default_template"] or DEFAULT_TEMPLATE)
         selected_raw = payload.get("selected_current_paths")
         selected_current_paths = {
@@ -281,9 +387,15 @@ def setup(app, context):
             if str(path).strip()
         } or None
         root = _scan_root(dlc)
-        preview_data = _preview_items(root, _meta, template, selected_current_paths=selected_current_paths)
+        preview_data = _preview_items(
+            root,
+            _meta,
+            template,
+            selected_current_paths=selected_current_paths,
+            duplicate_handling=duplicate_handling,
+        )
         blockers = [item for item in preview_data["items"] if item["status"] == "conflict"]
-        if blockers:
+        if blockers and duplicate_handling != DUPLICATE_HANDLING_SKIP_CONFLICTS:
             return JSONResponse(
                 {
                     "error": "Preview has conflicts in the selected rows. Resolve them before applying.",
@@ -325,8 +437,10 @@ def setup(app, context):
 
         return {
             "template": template,
+            "duplicate_handling": duplicate_handling,
             "selected_count": preview_data["selected_count"],
             "renamed_count": len(renamed),
+            "skipped_conflict_count": len(blockers) if duplicate_handling == DUPLICATE_HANDLING_SKIP_CONFLICTS else 0,
             "renamed": renamed,
         }
 

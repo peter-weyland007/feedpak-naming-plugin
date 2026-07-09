@@ -1,7 +1,7 @@
 {
   "id": "feedpak_naming",
   "name": "Feedpak Naming",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "bundled": false,
   "private": false,
   "standards": ["plugin-runtime-idempotent.v1"],

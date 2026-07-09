@@ -31,13 +31,24 @@
           </div>
         </div>
         <div class="rounded-lg border border-dark-400 bg-dark-700/50 p-3">
-          <label class="flex items-start gap-3 text-sm text-gray-200">
-            <input id="feedpak-naming-auto-apply" type="checkbox" class="mt-1 h-4 w-4 rounded border-dark-300 bg-dark-800 text-blue-500 focus:ring-blue-500" />
-            <span>
-              <span class="block font-medium">Auto-apply default rule after import/conversion</span>
-              <span class="block text-xs text-gray-400">This saves the rule on the backend and exposes a default-run route for the import flow to call.</span>
-            </span>
-          </label>
+          <div class="space-y-3">
+            <label class="flex items-start gap-3 text-sm text-gray-200">
+              <input id="feedpak-naming-auto-apply" type="checkbox" class="mt-1 h-4 w-4 rounded border-dark-300 bg-dark-800 text-blue-500 focus:ring-blue-500" />
+              <span>
+                <span class="block font-medium">Auto-apply default rule after import/conversion</span>
+                <span class="block text-xs text-gray-400">This saves the rule on the backend and exposes a default-run route for the import flow to call.</span>
+              </span>
+            </label>
+            <label class="block text-sm text-gray-200">
+              <span class="mb-2 block font-medium">Duplicate handling</span>
+              <select id="feedpak-naming-duplicate-handling" class="w-full rounded-lg border border-dark-400 bg-dark-700 px-3 py-2 text-sm text-white outline-none focus:border-blue-500">
+                <option value="stop">Stop on conflicts</option>
+                <option value="auto_number">Auto-number duplicates</option>
+                <option value="skip_conflicts">Skip conflicting rows</option>
+              </select>
+              <span class="mt-2 block text-xs text-gray-400">Choose whether duplicate target names should block the run, be auto-numbered, or be left untouched while ready rows continue.</span>
+            </label>
+          </div>
           <button id="feedpak-naming-save-settings" class="mt-3 w-full rounded-lg bg-slate-600 px-4 py-2 text-sm font-medium text-white hover:bg-slate-500">Save defaults</button>
         </div>
       </div>

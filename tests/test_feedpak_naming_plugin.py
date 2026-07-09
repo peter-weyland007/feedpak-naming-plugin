@@ -158,6 +158,323 @@ def test_preview_marks_conflict_when_selected_unchanged_row_already_occupies_tar
     assert conflict_rows[0]["current_relative_path"] == "sloppak/Children_Of_Bodom_Silent_Night_Bodom_Night_NA_DD.sloppak"
 
 
+def test_preview_can_auto_number_conflicts_when_enabled(tmp_path):
+    dlc = tmp_path / "dlc"
+    lib = dlc / "sloppak"
+    lib.mkdir(parents=True)
+    source = lib / "Children_Of_Bodom_Silent_Night_Bodom_Night_NA_DD.sloppak"
+    source.write_text("fake")
+    target_dir = dlc / "Children Of Bodom"
+    target_dir.mkdir(parents=True)
+    existing = target_dir / "Silent Night- Bodom Night.feedpak"
+    existing.write_text("already here")
+    cfg = tmp_path / "config"
+    cfg.mkdir()
+
+    app = FastAPI()
+    MODULE.setup(
+        app,
+        {
+            "log": type("L", (), {"info": lambda *a, **k: None, "warning": lambda *a, **k: None})(),
+            "config_dir": cfg,
+            "get_dlc_dir": lambda: dlc,
+            "extract_meta": lambda path: {
+                "artist": "Children Of Bodom",
+                "title": "Silent Night- Bodom Night",
+            },
+        },
+    )
+    client = TestClient(app)
+
+    client.post(
+        "/api/plugins/feedpak_naming/settings",
+        json={"auto_number_conflicts": True},
+    )
+    preview = client.get("/api/plugins/feedpak_naming/preview", params={"template": "{artist}/{title}.feedpak"})
+    assert preview.status_code == 200
+    body = preview.json()
+    row = next(item for item in body["items"] if item["current_relative_path"] == "sloppak/Children_Of_Bodom_Silent_Night_Bodom_Night_NA_DD.sloppak")
+    assert row["status"] == "rename"
+    assert row["proposed_relative_path"] == "Children Of Bodom/Silent Night- Bodom Night (2).feedpak"
+    assert body["conflict_count"] == 0
+
+
+
+def test_apply_can_auto_number_conflicts_when_enabled(tmp_path):
+    dlc = tmp_path / "dlc"
+    lib = dlc / "sloppak"
+    lib.mkdir(parents=True)
+    source = lib / "Children_Of_Bodom_Silent_Night_Bodom_Night_NA_DD.sloppak"
+    source.write_text("fake")
+    target_dir = dlc / "Children Of Bodom"
+    target_dir.mkdir(parents=True)
+    existing = target_dir / "Silent Night- Bodom Night.feedpak"
+    existing.write_text("already here")
+    cfg = tmp_path / "config"
+    cfg.mkdir()
+
+    app = FastAPI()
+    MODULE.setup(
+        app,
+        {
+            "log": type("L", (), {"info": lambda *a, **k: None, "warning": lambda *a, **k: None})(),
+            "config_dir": cfg,
+            "get_dlc_dir": lambda: dlc,
+            "extract_meta": lambda path: {
+                "artist": "Children Of Bodom",
+                "title": "Silent Night- Bodom Night",
+            },
+        },
+    )
+    client = TestClient(app)
+
+    client.post(
+        "/api/plugins/feedpak_naming/settings",
+        json={"auto_number_conflicts": True},
+    )
+    apply = client.post(
+        "/api/plugins/feedpak_naming/apply",
+        json={
+            "template": "{artist}/{title}.feedpak",
+            "selected_current_paths": ["sloppak/Children_Of_Bodom_Silent_Night_Bodom_Night_NA_DD.sloppak"],
+        },
+    )
+    assert apply.status_code == 200
+    body = apply.json()
+    assert body["renamed_count"] == 1
+    assert body["renamed"][0]["to"] == "Children Of Bodom/Silent Night- Bodom Night (2).feedpak"
+    assert (dlc / "Children Of Bodom" / "Silent Night- Bodom Night (2).feedpak").exists()
+    assert existing.exists()
+
+
+def test_apply_can_skip_conflicting_rows_when_enabled(tmp_path):
+    dlc = tmp_path / "dlc"
+    lib = dlc / "sloppak"
+    lib.mkdir(parents=True)
+    conflict = lib / "conflict.feedpak"
+    clean = lib / "clean.feedpak"
+    conflict.write_text("fake")
+    clean.write_text("fake")
+    target_dir = dlc / "Children Of Bodom"
+    target_dir.mkdir(parents=True)
+    existing = target_dir / "Silent Night- Bodom Night.feedpak"
+    existing.write_text("already here")
+    cfg = tmp_path / "config"
+    cfg.mkdir()
+
+    def fake_extract_meta(path: Path):
+        if path.name == "conflict.feedpak":
+            return {"artist": "Children Of Bodom", "title": "Silent Night- Bodom Night"}
+        return {"artist": "Paramore", "title": "Hallelujah"}
+
+    app = FastAPI()
+    MODULE.setup(
+        app,
+        {
+            "log": type("L", (), {"info": lambda *a, **k: None, "warning": lambda *a, **k: None})(),
+            "config_dir": cfg,
+            "get_dlc_dir": lambda: dlc,
+            "extract_meta": fake_extract_meta,
+        },
+    )
+    client = TestClient(app)
+
+    saved = client.post(
+        "/api/plugins/feedpak_naming/settings",
+        json={"duplicate_handling": "skip_conflicts"},
+    )
+    assert saved.status_code == 200
+
+    apply = client.post(
+        "/api/plugins/feedpak_naming/apply",
+        json={
+            "template": "{artist}/{title}.feedpak",
+            "selected_current_paths": [
+                "sloppak/conflict.feedpak",
+                "sloppak/clean.feedpak",
+            ],
+        },
+    )
+    assert apply.status_code == 200
+    body = apply.json()
+    assert body["duplicate_handling"] == "skip_conflicts"
+    assert body["selected_count"] == 2
+    assert body["renamed_count"] == 1
+    assert body["skipped_conflict_count"] == 1
+    assert body["renamed"][0]["to"] == "Paramore/Hallelujah.feedpak"
+    assert (dlc / "Paramore" / "Hallelujah.feedpak").exists()
+    assert conflict.exists()
+    assert existing.exists()
+
+
+
+def test_preview_uses_live_duplicate_handling_query_override(tmp_path):
+    dlc = tmp_path / "dlc"
+    lib = dlc / "sloppak"
+    lib.mkdir(parents=True)
+    source = lib / "Children_Of_Bodom_Silent_Night_Bodom_Night_NA_DD.sloppak"
+    source.write_text("fake")
+    target_dir = dlc / "Children Of Bodom"
+    target_dir.mkdir(parents=True)
+    existing = target_dir / "Silent Night- Bodom Night.feedpak"
+    existing.write_text("already here")
+    cfg = tmp_path / "config"
+    cfg.mkdir()
+
+    app = FastAPI()
+    MODULE.setup(
+        app,
+        {
+            "log": type("L", (), {"info": lambda *a, **k: None, "warning": lambda *a, **k: None})(),
+            "config_dir": cfg,
+            "get_dlc_dir": lambda: dlc,
+            "extract_meta": lambda path: {
+                "artist": "Children Of Bodom",
+                "title": "Silent Night- Bodom Night",
+            },
+        },
+    )
+    client = TestClient(app)
+
+    saved = client.post(
+        "/api/plugins/feedpak_naming/settings",
+        json={"duplicate_handling": "stop"},
+    )
+    assert saved.status_code == 200
+
+    preview = client.get(
+        "/api/plugins/feedpak_naming/preview",
+        params={
+            "template": "{artist}/{title}.feedpak",
+            "duplicate_handling": "auto_number",
+        },
+    )
+    assert preview.status_code == 200
+    body = preview.json()
+    row = next(item for item in body["items"] if item["current_relative_path"] == "sloppak/Children_Of_Bodom_Silent_Night_Bodom_Night_NA_DD.sloppak")
+    assert body["duplicate_handling"] == "auto_number"
+    assert row["status"] == "rename"
+    assert row["proposed_relative_path"] == "Children Of Bodom/Silent Night- Bodom Night (2).feedpak"
+
+
+
+def test_apply_uses_live_duplicate_handling_payload_override(tmp_path):
+    dlc = tmp_path / "dlc"
+    lib = dlc / "sloppak"
+    lib.mkdir(parents=True)
+    source = lib / "Children_Of_Bodom_Silent_Night_Bodom_Night_NA_DD.sloppak"
+    source.write_text("fake")
+    target_dir = dlc / "Children Of Bodom"
+    target_dir.mkdir(parents=True)
+    existing = target_dir / "Silent Night- Bodom Night.feedpak"
+    existing.write_text("already here")
+    cfg = tmp_path / "config"
+    cfg.mkdir()
+
+    app = FastAPI()
+    MODULE.setup(
+        app,
+        {
+            "log": type("L", (), {"info": lambda *a, **k: None, "warning": lambda *a, **k: None})(),
+            "config_dir": cfg,
+            "get_dlc_dir": lambda: dlc,
+            "extract_meta": lambda path: {
+                "artist": "Children Of Bodom",
+                "title": "Silent Night- Bodom Night",
+            },
+        },
+    )
+    client = TestClient(app)
+
+    saved = client.post(
+        "/api/plugins/feedpak_naming/settings",
+        json={"duplicate_handling": "stop"},
+    )
+    assert saved.status_code == 200
+
+    apply = client.post(
+        "/api/plugins/feedpak_naming/apply",
+        json={
+            "template": "{artist}/{title}.feedpak",
+            "duplicate_handling": "auto_number",
+            "selected_current_paths": ["sloppak/Children_Of_Bodom_Silent_Night_Bodom_Night_NA_DD.sloppak"],
+        },
+    )
+    assert apply.status_code == 200
+    body = apply.json()
+    assert body["duplicate_handling"] == "auto_number"
+    assert body["renamed_count"] == 1
+    assert body["renamed"][0]["to"] == "Children Of Bodom/Silent Night- Bodom Night (2).feedpak"
+    assert (dlc / "Children Of Bodom" / "Silent Night- Bodom Night (2).feedpak").exists()
+    assert existing.exists()
+
+
+
+def test_settings_round_trip_auto_number_conflicts_flag(tmp_path):
+    dlc = tmp_path / "dlc"
+    dlc.mkdir(parents=True)
+    cfg = tmp_path / "config"
+    cfg.mkdir()
+
+    app = FastAPI()
+    MODULE.setup(
+        app,
+        {
+            "log": type("L", (), {"info": lambda *a, **k: None, "warning": lambda *a, **k: None})(),
+            "config_dir": cfg,
+            "get_dlc_dir": lambda: dlc,
+            "extract_meta": lambda path: {},
+        },
+    )
+    client = TestClient(app)
+
+    saved = client.post(
+        "/api/plugins/feedpak_naming/settings",
+        json={"auto_number_conflicts": True},
+    )
+    assert saved.status_code == 200
+    assert saved.json()["auto_number_conflicts"] is True
+    assert saved.json()["duplicate_handling"] == "auto_number"
+
+    loaded = client.get("/api/plugins/feedpak_naming/settings")
+    assert loaded.status_code == 200
+    assert loaded.json()["auto_number_conflicts"] is True
+    assert loaded.json()["duplicate_handling"] == "auto_number"
+
+
+def test_settings_round_trip_duplicate_handling_skip_conflicts(tmp_path):
+    dlc = tmp_path / "dlc"
+    dlc.mkdir(parents=True)
+    cfg = tmp_path / "config"
+    cfg.mkdir()
+
+    app = FastAPI()
+    MODULE.setup(
+        app,
+        {
+            "log": type("L", (), {"info": lambda *a, **k: None, "warning": lambda *a, **k: None})(),
+            "config_dir": cfg,
+            "get_dlc_dir": lambda: dlc,
+            "extract_meta": lambda path: {},
+        },
+    )
+    client = TestClient(app)
+
+    saved = client.post(
+        "/api/plugins/feedpak_naming/settings",
+        json={"duplicate_handling": "skip_conflicts"},
+    )
+    assert saved.status_code == 200
+    assert saved.json()["duplicate_handling"] == "skip_conflicts"
+    assert saved.json()["auto_number_conflicts"] is False
+
+    loaded = client.get("/api/plugins/feedpak_naming/settings")
+    assert loaded.status_code == 200
+    assert loaded.json()["duplicate_handling"] == "skip_conflicts"
+    assert loaded.json()["auto_number_conflicts"] is False
+
+
+
 def test_preview_scans_whole_dlc_root_and_legacy_sloppak_suffix(tmp_path):
     dlc = tmp_path / "dlc"
     (dlc / "sloppak").mkdir(parents=True)
