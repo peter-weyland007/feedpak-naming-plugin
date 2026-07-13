@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import uuid
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -33,12 +34,70 @@ WHITESPACE_RE = re.compile(r"\s+")
 NUMBERED_NAME_RE = re.compile(r"^(.*) \((\d+)\)$")
 
 
+def _path_key(relative_path: str) -> str:
+    return str(relative_path or "").replace("\\", "/").casefold()
+
+
 def _scan_root(dlc: Path) -> Path:
     return dlc
 
 
 def _same_relative_path(current: str, proposed: str) -> bool:
-    return current.casefold() == proposed.casefold()
+    return _path_key(current) == _path_key(proposed)
+
+
+def _same_path_entry(left: Path, right: Path) -> bool:
+    if left == right:
+        return True
+    try:
+        if left.exists() and right.exists():
+            return left.samefile(right)
+    except OSError:
+        return False
+    return _same_relative_path(left.as_posix(), right.as_posix())
+
+
+def _relative_path_exists(root: Path, relative_path: str) -> bool:
+    return (root / relative_path).exists()
+
+
+def _destination_will_be_vacated(
+    proposed_relative_path: str,
+    items: list[dict[str, Any]],
+    explicit_selection: set[str] | None,
+) -> bool:
+    proposed_key = _path_key(proposed_relative_path)
+    for item in items:
+        if not _selected_for_item(item, explicit_selection):
+            continue
+        if _path_key(item["current_relative_path"]) != proposed_key:
+            continue
+        if _same_relative_path(item["current_relative_path"], item["proposed_relative_path"]):
+            continue
+        return True
+    return False
+
+
+def _occupied_relative_path_keys(
+    root: Path,
+    items: list[dict[str, Any]],
+    vacated_current_paths: set[str],
+) -> set[str]:
+    occupied: set[str] = set()
+    vacated_keys = {_path_key(path) for path in vacated_current_paths}
+    for item in items:
+        current_path = item["current_relative_path"]
+        if _path_key(current_path) in vacated_keys:
+            continue
+        occupied.add(_path_key(current_path))
+    for item in items:
+        current_path = item["current_relative_path"]
+        if _path_key(current_path) in vacated_keys:
+            continue
+        proposed_path = item["proposed_relative_path"]
+        if _relative_path_exists(root, proposed_path):
+            occupied.add(_path_key(proposed_path))
+    return occupied
 
 
 def _iter_feedpaks(root: Path, include_builtin_content: bool = False) -> list[Path]:
@@ -93,7 +152,11 @@ def _safe_relative_path(relative_path: str) -> Path:
     return Path(*parts)
 
 
-def _next_numbered_relative_path(relative_path: str, occupied_relative_paths: set[str]) -> str:
+def _next_numbered_relative_path(
+    relative_path: str,
+    occupied_relative_path_keys: set[str],
+    root: Path,
+) -> str:
     candidate = _safe_relative_path(relative_path)
     parent = candidate.parent
     stem = candidate.stem
@@ -109,8 +172,10 @@ def _next_numbered_relative_path(relative_path: str, occupied_relative_paths: se
     while True:
         numbered_name = f"{base_stem} ({next_index}){suffix}"
         numbered_relative = (parent / numbered_name).as_posix() if str(parent) != "." else numbered_name
-        if numbered_relative not in occupied_relative_paths:
+        numbered_key = _path_key(numbered_relative)
+        if numbered_key not in occupied_relative_path_keys and not _relative_path_exists(root, numbered_relative):
             return numbered_relative
+        occupied_relative_path_keys.add(numbered_key)
         next_index += 1
 
 
@@ -197,6 +262,7 @@ def _annotate_items(
     items: list[dict[str, Any]],
     explicit_selection: set[str] | None,
     duplicate_handling: str = DUPLICATE_HANDLING_STOP,
+    root: Path | None = None,
 ) -> dict[str, Any]:
     selected_paths_that_will_be_vacated = {
         item["current_relative_path"]
@@ -204,32 +270,48 @@ def _annotate_items(
         if _selected_for_item(item, explicit_selection) and item["actionable"]
     }
 
-    if duplicate_handling == DUPLICATE_HANDLING_AUTO_NUMBER:
-        occupied_relative_paths = {
-            item["current_relative_path"]
-            for item in items
-            if item["current_relative_path"] not in selected_paths_that_will_be_vacated
-        }
-        reserved_relative_paths: set[str] = set()
+    if duplicate_handling == DUPLICATE_HANDLING_AUTO_NUMBER and root is not None:
+        occupied_relative_path_keys = _occupied_relative_path_keys(
+            root,
+            items,
+            selected_paths_that_will_be_vacated,
+        )
+        reserved_relative_path_keys: set[str] = set()
         for item in items:
             item["auto_numbered_from"] = None
             if not _selected_for_item(item, explicit_selection):
                 continue
             desired_relative_path = item["proposed_relative_path"]
+            desired_key = _path_key(desired_relative_path)
             resolved_relative_path = desired_relative_path
-            if resolved_relative_path in occupied_relative_paths or resolved_relative_path in reserved_relative_paths:
+            destination_blocked = (
+                desired_key in occupied_relative_path_keys
+                or desired_key in reserved_relative_path_keys
+                or (
+                    _relative_path_exists(root, desired_relative_path)
+                    and not _destination_will_be_vacated(
+                        desired_relative_path,
+                        items,
+                        explicit_selection,
+                    )
+                )
+            )
+            if destination_blocked:
                 resolved_relative_path = _next_numbered_relative_path(
                     desired_relative_path,
-                    occupied_relative_paths | reserved_relative_paths,
+                    occupied_relative_path_keys | reserved_relative_path_keys,
+                    root,
                 )
                 item["auto_numbered_from"] = desired_relative_path
             item["proposed_relative_path"] = resolved_relative_path
             item["proposed_path"] = str(item["root"] / resolved_relative_path)
-            item["target_exists"] = False
-            reserved_relative_paths.add(resolved_relative_path)
+            item["target_exists"] = _relative_path_exists(root, resolved_relative_path)
+            reserved_key = _path_key(resolved_relative_path)
+            reserved_relative_path_keys.add(reserved_key)
+            occupied_relative_path_keys.add(reserved_key)
 
     selected_target_counts: Counter[str] = Counter(
-        item["proposed_relative_path"]
+        _path_key(item["proposed_relative_path"])
         for item in items
         if _selected_for_item(item, explicit_selection)
     )
@@ -246,6 +328,7 @@ def _annotate_items(
         item["selectable"] = bool(item["actionable"])
         status = "unchanged"
         error = None
+        proposed_key = _path_key(item["proposed_relative_path"])
 
         if not item["actionable"]:
             unchanged_count += 1
@@ -254,11 +337,15 @@ def _annotate_items(
             excluded_count += 1
         else:
             selected_count += 1
-            if selected_target_counts[item["proposed_relative_path"]] > 1:
+            if selected_target_counts[proposed_key] > 1:
                 status = "conflict"
                 error = "Another selected file would get the same name."
                 conflict_count += 1
-            elif item["target_exists"] and item["proposed_relative_path"] not in selected_paths_that_will_be_vacated:
+            elif item["target_exists"] and not _destination_will_be_vacated(
+                item["proposed_relative_path"],
+                items,
+                explicit_selection,
+            ):
                 status = "conflict"
                 error = "A file with that name already exists."
                 conflict_count += 1
@@ -296,6 +383,7 @@ def _preview_items(
         proposed_path = root / proposed_relative
         rel_current = path.relative_to(root).as_posix()
         rel_proposed = proposed_path.relative_to(root).as_posix()
+        proposed_exists = proposed_path.exists()
         items.append(
             {
                 "root": root,
@@ -308,12 +396,17 @@ def _preview_items(
                 "album": raw.get("album") or "",
                 "year": raw.get("year") or "",
                 "actionable": not _same_relative_path(rel_current, rel_proposed),
-                "target_exists": proposed_path.exists() and proposed_path != path,
+                "target_exists": proposed_exists and not _same_path_entry(path, proposed_path),
             }
         )
 
     normalized_duplicate_handling = _normalize_duplicate_handling(duplicate_handling)
-    annotated = _annotate_items(items, selected_current_paths, duplicate_handling=normalized_duplicate_handling)
+    annotated = _annotate_items(
+        items,
+        selected_current_paths,
+        duplicate_handling=normalized_duplicate_handling,
+        root=root,
+    )
     for item in annotated["items"]:
         item.pop("root", None)
     return {
@@ -449,36 +542,117 @@ def setup(app, context):
                 status_code=409,
             )
 
-        renamed: list[dict[str, str]] = []
+        rename_jobs = []
         for item in preview_data["items"]:
             if item["status"] != "rename":
                 continue
             current = Path(item["current_path"])
             proposed = Path(item["proposed_path"])
+            temp = current.with_name(current.name + "." + uuid.uuid4().hex + ".rename_tmp")
+            rename_jobs.append(
+                {
+                    "item": item,
+                    "current": current,
+                    "temp": temp,
+                    "proposed": proposed,
+                }
+            )
+
+        renamed: list[dict[str, str]] = []
+
+        for index, job in enumerate(rename_jobs):
             try:
-                proposed.parent.mkdir(parents=True, exist_ok=True)
-                current.rename(proposed)
+                job["temp"].parent.mkdir(parents=True, exist_ok=True)
+                job["current"].rename(job["temp"])
             except Exception as exc:
+                for done in reversed(rename_jobs[:index]):
+                    try:
+                        if done["temp"].exists():
+                            done["temp"].rename(done["current"])
+                    except Exception:
+                        pass
                 return JSONResponse(
                     {
-                        "error": f"Rename failed for {item['current_relative_path']}: {exc}",
+                        "error": f"Rename failed for {job['item']['current_relative_path']}: {exc}",
                         "failed": {
-                            "from": item["current_relative_path"],
-                            "to": item["proposed_relative_path"],
+                            "from": job["item"]["current_relative_path"],
+                            "to": job["item"]["proposed_relative_path"],
                         },
                         "renamed_count": len(renamed),
                         "renamed": renamed,
                     },
                     status_code=500,
                 )
-            renamed.append({"from": item["current_relative_path"], "to": item["proposed_relative_path"]})
+        claimed_destination_keys: set[str] = set()
+        occupied_destination_keys = _occupied_relative_path_keys(
+            root,
+            preview_data["items"],
+            {
+                item["current_relative_path"]
+                for item in preview_data["items"]
+                if item["status"] == "rename"
+            },
+        )
+
+        for job in rename_jobs:
             try:
-                parent = current.parent
+                proposed = job["proposed"]
+                proposed_relative = job["item"]["proposed_relative_path"]
+                proposed_key = _path_key(proposed_relative)
+
+                if proposed_key in claimed_destination_keys:
+                    raise FileExistsError(f"Another rename in this batch already used {proposed_relative}")
+
+                if proposed.exists() and not _same_path_entry(job["temp"], proposed):
+                    if duplicate_handling == DUPLICATE_HANDLING_AUTO_NUMBER:
+                        resolved_relative = _next_numbered_relative_path(
+                            proposed_relative,
+                            occupied_destination_keys | claimed_destination_keys,
+                            root,
+                        )
+                        proposed = root / resolved_relative
+                        proposed_relative = resolved_relative
+                        proposed_key = _path_key(resolved_relative)
+                        job["proposed"] = proposed
+                        job["item"]["proposed_relative_path"] = resolved_relative
+                        job["item"]["proposed_path"] = str(proposed)
+                    else:
+                        raise FileExistsError(f"A file already exists at {proposed_relative}")
+
+                proposed.parent.mkdir(parents=True, exist_ok=True)
+                job["temp"].rename(proposed)
+                claimed_destination_keys.add(proposed_key)
+                occupied_destination_keys.add(proposed_key)
+                renamed.append({
+                    "from": job["item"]["current_relative_path"],
+                    "to": job["item"]["proposed_relative_path"],
+                })
+
+                parent = job["current"].parent
                 while parent != root and parent.exists() and not any(parent.iterdir()):
                     parent.rmdir()
                     parent = parent.parent
-            except Exception:
-                pass
+            except Exception as exc:
+                for undo in reversed(rename_jobs):
+                    try:
+                        if undo["proposed"].exists():
+                            undo["proposed"].rename(undo["current"])
+                        elif undo["temp"].exists():
+                            undo["temp"].rename(undo["current"])
+                    except Exception:
+                        pass
+                return JSONResponse(
+                    {
+                        "error": f"Rename failed for {job['item']['current_relative_path']}: {exc}",
+                        "failed": {
+                            "from": job["item"]["current_relative_path"],
+                            "to": job["item"]["proposed_relative_path"],
+                        },
+                        "renamed_count": len(renamed),
+                        "renamed": renamed,
+                    },
+                    status_code=500,
+                )
 
         return {
             "template": template,

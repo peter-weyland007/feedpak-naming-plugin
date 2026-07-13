@@ -1,6 +1,6 @@
 # Feedpak Naming Plugin
 
-Current release: `v0.1.7`
+Current release: `v0.1.8`
 
 A Feedback plugin for previewing and applying naming rules to `.feedpak` and legacy `.sloppak` files.
 
@@ -18,6 +18,7 @@ A Feedback plugin for previewing and applying naming rules to `.feedpak` and leg
 - includes both `.feedpak` and legacy `.sloppak` packages in preview/apply
 - excludes Feedback built-in starter/tutorial/diagnostic content by default, with an advanced opt-in checkbox when you do want those included
 - treats case-only path differences as unchanged, so folder capitalization cleanups do not get flagged as actionable renames
+- applies selected renames through a safer two-phase move, so batches still work when one selected row needs another selected row to vacate a target first
 
 ## Demo
 ### Example flow

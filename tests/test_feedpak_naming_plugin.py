@@ -133,6 +133,64 @@ def test_selected_subset_can_resolve_duplicate_target_conflicts(tmp_path):
     assert second.exists()
 
 
+def test_apply_can_complete_two_phase_batch_when_selected_rows_vacate_each_other_targets(tmp_path):
+    dlc = tmp_path / "dlc"
+    first_dir = dlc / "artist-one"
+    second_dir = dlc / "artist-two"
+    first_dir.mkdir(parents=True)
+    second_dir.mkdir(parents=True)
+    first = first_dir / "Alpha.feedpak"
+    second = second_dir / "Beta.feedpak"
+    first.write_text("first")
+    second.write_text("second")
+    cfg = tmp_path / "config"
+    cfg.mkdir()
+
+    def fake_extract_meta(path: Path):
+        if path == first:
+            return {"artist": "Artist Two", "title": "Beta"}
+        return {"artist": "Artist Three", "title": "Gamma"}
+
+    app = FastAPI()
+    MODULE.setup(
+        app,
+        {
+            "log": type("L", (), {"info": lambda *a, **k: None, "warning": lambda *a, **k: None})(),
+            "config_dir": cfg,
+            "get_dlc_dir": lambda: dlc,
+            "extract_meta": fake_extract_meta,
+        },
+    )
+    client = TestClient(app)
+
+    preview = client.get("/api/plugins/feedpak_naming/preview", params={"template": "{artist}/{title}.feedpak"})
+    assert preview.status_code == 200
+    body = preview.json()
+    rows = {item["current_relative_path"]: item for item in body["items"]}
+    assert rows["artist-one/Alpha.feedpak"]["status"] == "rename"
+    assert rows["artist-one/Alpha.feedpak"]["proposed_relative_path"] == "Artist Two/Beta.feedpak"
+    assert rows["artist-two/Beta.feedpak"]["status"] == "rename"
+    assert rows["artist-two/Beta.feedpak"]["proposed_relative_path"] == "Artist Three/Gamma.feedpak"
+
+    apply = client.post(
+        "/api/plugins/feedpak_naming/apply",
+        json={
+            "template": "{artist}/{title}.feedpak",
+            "selected_current_paths": [
+                "artist-one/Alpha.feedpak",
+                "artist-two/Beta.feedpak",
+            ],
+        },
+    )
+    assert apply.status_code == 200
+    result = apply.json()
+    assert result["renamed_count"] == 2
+    assert (dlc / "Artist Two" / "Beta.feedpak").read_text() == "first"
+    assert (dlc / "Artist Three" / "Gamma.feedpak").read_text() == "second"
+    assert not first.exists()
+    assert not second.exists()
+
+
 def test_preview_marks_conflict_when_selected_unchanged_row_already_occupies_target(tmp_path):
     dlc = tmp_path / "dlc"
     lib = dlc / "sloppak"
